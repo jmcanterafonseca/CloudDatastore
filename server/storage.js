@@ -4,14 +4,14 @@ var Storage = require('request');
 var fs = require('fs');
 
 // Configuration
-var subdomain = 'is0006';
-var user      = 'is0006';
+var subdomain = 'cantera';
+var user      = 'cantera';
 var pwd       = 'dDnmQJ4U';
 var endpoint  = 'nos-eu-mad-1.instantservers.telefonica.com';
 var baseUrl   = 'https://' + subdomain + '.' + endpoint;
 
 function bucketName(token, dsName) {
-  return 'bucket' + '_' + token + '_' + dsName;
+  return encodeURIComponent('bucket' + '_' + token + '_' + dsName);
 }
 
 function storageCb(cb, error, response, body) {
@@ -80,18 +80,10 @@ function deleteBucket(token, dsName, cb) {
     ).auth(user, pwd, true);
 }
 
-function deleteMedia(uid, mediaId, cb) {
-  Storage.del(baseUrl + '/' + bucketName(uid) +'/' + mediaId,
-    storageCb.bind(null, function(err, result) {
-      if (err) {
-        cb(err);
-        return;
-      }
-      // Now it is needed to also delete the thumbnail
-      Storage.del(baseUrl + '/' + bucketName(uid) +'/' + mediaId + '_thumb',
-                  storageCb.bind(null, cb)).auth(user, pwd, true);
-    })
-    ).auth(user, pwd, true);
+function deleteMedia(uid, dsName, mediaId, cb) {
+  Storage.del(baseUrl + '/' + bucketName(uid, dsName) +'/' + mediaId,
+    storageCb.bind(null, cb)
+  ).auth(user, pwd, true);
 }
 
 exports.createBucketForDatastore = createBucketForDatastore;

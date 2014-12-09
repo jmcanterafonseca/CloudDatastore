@@ -2,10 +2,14 @@
 
 'use strict';
 
+var VERIFIER_SERVICE = 'https://verifier.accounts.firefox.com/v2';
+
 var fs = require('fs');
 var http = require('http');
-
 var bodyParser = require('body-parser');
+var multer = require('multer');
+
+var HttpRequest = require('./http_rest');
 
 // Our modules
 var Storage = require('./storage');
@@ -26,12 +30,60 @@ app.configure(function() {
   // for parsing application/x-www-form-urlencoded
   app.use(bodyParser.urlencoded({ extended: true }));
   app.use(bodyParser.json());
+  app.use(multer());
 });
 
 var httpServer = http.createServer(app);
 httpServer.listen(80);
 
 console.log('CloudDatastore server up and running');
+
+// Registers a client with the server
+app.post('/ds/register', function(req, resp) {
+  console.log('Register invoked!!');
+  var data = Utils.getObjectFromRequest(req);
+
+  var assertion = data.assertion;
+  var audience = data.audience;
+
+  console.log('Audience: ', audience);
+
+  if (!assertion || !audience) {
+    resp.send(404);
+    return;
+  }
+
+  console.log('Assertion to be verified2: ', assertion);
+  var verificationData = {
+    audience: audience,
+    assertion: assertion
+  };
+
+  HttpRequest.post(VERIFIER_SERVICE, function(err, verifResponse) {
+    if (err) {
+      resp.send(500);
+      return;
+    }
+
+    var verifObj = JSON.parse(verifResponse);
+    var msisdn = verifObj.idpClaims.verifiedMSISDN;
+
+    Utils.generateToken(assertion, msisdn, function(err, token) {
+      if (err) {
+        resp.send(500);
+        return;
+      }
+
+      resp.type('json');
+      resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+      resp.send({
+        token: token,
+        msisdn: msisdn
+      });
+    });
+  }, verificationData);
+
+});
 
 // Get an object from the datastore by id
 app.get('/dsapi/:dsname/:id', function(req, resp) {
@@ -90,7 +142,7 @@ app.post('/dsapi/:dsname/:id', function(req, resp) {
     return;
   }
 
-  Datastore.putToDatastore(params, JSON.parse(obj), null, function(error, result) {
+  Datastore.putToDatastore(params, obj, null, function(error, result) {
     if (error) {
       resp.send(500);
       return;
@@ -117,7 +169,7 @@ app.delete('/dsapi/:dsname/:id', function(req, resp) {
         resp.send(500);
         return;
       }
-      if (result === 1) {
+      if (result == 1) {
         resp.send('ok');
       }
       else {
@@ -186,33 +238,38 @@ app.get('/dsapi/sync', function(req, resp) {
 
 app.get('/dsdebug/:dsname/list_media', function(req, resp) {
   console.log('List media');
+  var params = Utils.getParams(req);
 
-  var url = URL.parse(req.originalUrl);
-  var params = QueryString.parse(url.query);
   var token = params.token;
-
-  var dsName = req.params.dsname;
+  var dsName = params.datastoreName;
 
   if (!token || !dsName) {
     resp.send(404);
     return;
   }
 
-  Storage.listMedia(token, dsName, function(err, result) {
+  Utils.token2Msisdn(token, function(err, msisdn) {
     if (err) {
       console.error(err);
+      resp.send(500);
       return;
     }
-    resp.type('json');
-    resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
-    resp.send(new Buffer(result));
+
+    Storage.listMedia(msisdn, dsName, function(err, result) {
+      if (err) {
+        console.error(err);
+        resp.send(err);
+        return;
+      }
+      resp.type('json');
+      resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+      resp.send(new Buffer(result));
+    });
+
   });
 });
 
 app.get('/dsdebug/list_buckets', function(req, resp) {
-  var url = URL.parse(req.originalUrl);
-  var params = QueryString.parse(url.query);
-
   Storage.listBuckets(function(err, result) {
     if (err) {
       console.error(err);
@@ -225,24 +282,30 @@ app.get('/dsdebug/list_buckets', function(req, resp) {
 });
 
 app.get('/dsdebug/:dsname/delete_store_bucket', function(req, resp) {
-  var url = URL.parse(req.originalUrl);
-  var params = QueryString.parse(url.query);
-  var token = params.token;
+  var params = Utils.getParams(req);
 
-  var dsName = req.params.dsname;
+  var token = params.token;
+  var dsName = params.datastoreName;
 
   if (!token || !dsName) {
     resp.send(404);
     return;
   }
 
-  Storage.deleteBucket(token, dsName, function(err, result) {
+  Utils.token2Msisdn(token, function(err, msisdn) {
     if (err) {
-      console.error(err);
+      console.log(err);
       return;
     }
 
-    resp.send('ok');
+    Storage.deleteBucket(msisdn, dsName, function(err, result) {
+      if (err) {
+        console.error(err);
+        return;
+      }
+
+      resp.send('ok');
+    });
   });
 });
 
@@ -250,22 +313,27 @@ app.get('/dsdebug/:dsname/delete_store_bucket', function(req, resp) {
 // Gets all the data the datastore has (typically used to bootstrap)
 app.get('/dsapi/:dsname/getAll', function(req, resp) {
   var params = Utils.getParams(req);
-  var hashName = Utils.getHashName(params);
-  client.hgetall(hashName, function(error, result) {
-    if (error) {
-      cb(null, error);
+  Utils.getHashName(params, function(err, hashName) {
+    if (err) {
+      resp.send(500);
       return;
     }
-    var out = {};
-    for(var j = 0; j < result.length / 2; j+=2) {
-      var key = result[j];
-      var object = result[j + 1];
-      out[key] = JSON.parse(object);
-    }
+    client.hgetall(hashName, function(error, result) {
+      if (error) {
+        cb(null, error);
+        return;
+      }
+      var out = {};
+      for(var j = 0; j < result.length / 2; j+=2) {
+        var key = result[j];
+        var object = result[j + 1];
+        out[key] = JSON.parse(object);
+      }
 
-    resp.type('json');
-    resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
-    resp.send(out);
+      resp.type('json');
+      resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+      resp.send(out);
+    });
   });
 });
 
