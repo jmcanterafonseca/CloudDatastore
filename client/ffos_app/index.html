@@ -2,18 +2,112 @@
 
 <html>
   <head>
-    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
     <meta charset="UTF-8">
-    <link href="/shared/style/headers.css" rel="stylesheet" type="text/css">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
+
+    <link href="shared/style/input_areas.css" rel="stylesheet" type="text/css">
+    <link href="shared/style/buttons.css" rel="stylesheet" type="text/css">
+    <link href="shared/style/lists.css" rel="stylesheet" type="text/css">
+
+
     <link href="style/cloud_datastore.css" rel="stylesheet" type="text/css">
+
+    <script defer src="js/lib/http_rest.js"></script>
+    <script defer src="js/lib/cloud_datastore.js"></script>
+    <script defer src="shared/js/async_storage.js"></script>
     <script defer src="js/main.js"></script>
+    <script defer src="js/startup.js"></script>
+
+    <!-- Web Components -->
+    <link rel="stylesheet" type="text/css" href="bower_components/base/base.css">
+    <link rel="stylesheet" type="text/css" href="bower_components/gaia-theme/gaia-theme.css">
+    <link rel="stylesheet" type="text/css" href="bower_components/gaia-fonts/style.css">
+    <script src="bower_components/gaia-icons/gaia-icons.js"></script>
+    <script src="bower_components/gaia-component/gaia-component.js"></script>
+    <script src="bower_components/gaia-header/gaia-header.js"></script>
+    <script src="bower_components/gaia-button/gaia-button.js"></script>
   </head>
 
-  <body>
-    <section>
-      <header>
-        <h1>Cloud Datastore Demo</h1>
-      </header>
+  <body role="application" class="theme-productivity">
+    <section id="notes-list-view" role="region" class="view view-visible">
+      <gaia-header id="notes-list-header">
+        <h1 id="app-title" data-l10n-id="Notes">Cloud Notes</h1>
+        <button id="add-note-button" data-icon="add" data-l10n-id="addButton"></button>
+        <button id="settings-button" data-icon="settings" data-l10n-id="settingsButton"></button>
+      </gaia-header>
+
+      <section data-type="list">
+        <ul id="notes-list">
+          <!--
+          <li>
+            <p>Note</p>
+          </li>
+          -->
+        </ul>
+      </section>
     </section>
+
+    <section id="notes-form-view" role="region" class="view view-hidden" class="theme-productivity">
+      <gaia-header id="notes-form-header" action="close">
+        <h1>New Note</h1>
+        <button id="save-button" data-l10n-id="done">Done</button>
+      </gaia-header>
+      <section class="view-body">
+        <form>
+          <label>Title:
+            <input type="text" size=15 name="title" x-inputmode="latin-prose" placeholder="Note Title">
+          </label>
+
+          <label>Text:
+            <textarea id="text-data" name="text-data" x-inputmode="latin-prose" placeholder="Note Content"></textarea>
+          </label>
+
+          <button id="attach-button" type=button>Attach File ...</button>
+
+          <!--
+          <input type=file name=attachment>
+          -->
+
+          <input type="hidden" name="noteId">
+        </form>
+
+        <section data-type="list" id="attachment-section" class="hidden">
+          <header>Attachments</header>
+          <ul id="attachments-list" ></ul>
+        </section>
+        
+        <button id="delete" class="danger">Delete Note</button>
+      </section>
+    </section>
+
+    <section id="notes-attachment-view" role="region" class="view view-hidden theme-media">
+      <gaia-header id="notes-attachment-header" action="close">
+        <h1>Attachment</h1>
+        <button id="attachment-remove-button" data-l10n-id="remove">Remove</button>
+      </gaia-header>
+      <section class="view-body view-attachment">
+        <div id="img-container">
+        </div>
+      </section>
+    </section>
+
+    <section id="notes-settings-view" role="region" class="view view-hidden">
+      <gaia-header id="notes-settings-header">
+        <h1>Settings</h1>
+        <button id="settings-done-button" data-l10n-id="done">Done</button>
+      </gaia-header>
+      <section class="view-body">
+        <div id="settings-content">
+          <p>Logged as: <span id="logged-as"></span></p>
+          <br><br>
+          <button id="clear-button" class="danger">Delete All</button>
+          <br><br>
+          <button id="local-clear">Delete Local Data</button>
+          <br><br>
+          <button id="local-clear" class="recommend">Sync Data</button>
+        </div>
+      </section>
+    </section>
+
   </body>
 </html>

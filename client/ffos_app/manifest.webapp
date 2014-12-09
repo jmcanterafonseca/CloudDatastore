@@ -1,5 +1,5 @@
 {
-  "name": "CloudDsDemo",
+  "name": "CloudNotes",
   "description": "Cloud DataStore Demo",
   "type": "certified",
   "launch_path": "/index.html",
@@ -9,12 +9,17 @@
   },
 
   "permissions": {
-    "systemXHR": {}
+    "systemXHR": {},
+    "mobileid": {
+      "description": "Allows to obtain user's mobile phone number"
+    }
   },
+
+  "orientation": "default",
 
   "locales": {
     "en-US": {
-      "name": "CloudDsDemo",
+      "name": "CloudNotes",
       "description": "Cloud DataStore Demo"
     }
   },
@@ -28,7 +33,7 @@
 
   "default_locale": "en-US",
   "icons": {
-    "120": "/style/icons/icon_120_.png",
-    "60": "/style/icons/icon_.png"
+    "120": "/style/icons/icon-notes-120.png",
+    "60": "/style/icons/icon-notes-60.png"
   }
 }
