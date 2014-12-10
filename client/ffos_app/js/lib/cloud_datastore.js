@@ -23,15 +23,114 @@ CloudDatastore.prototype = {
   },
 
   add: function(obj, key) {
-    return this._localDatastore.add(obj, key);
+    return this._localDatastore.add(obj, key).then((id) => {
+      return this._addId(id);
+    });
   },
 
   remove: function(key) {
-    return this._localDatastore.remove(key);
+    this._localDatastore.remove(key).then(() => {
+      return this._removeId(key);
+    });
   },
 
-  clear: function() {
-    return this._localDatastore.clear();
+  clear: function(options) {
+    if (options && options.onlyLocal === true) {
+      this._isLocalOperation = true;
+    }
+    return this._localDatastore.clear().then(() => {
+      return this._clearIds();
+    });
+  },
+
+  // Returns all the ids
+  getAll: function() {
+    return new Promise(function(resolve, reject) {
+      window.asyncStorage.getItem('dataStoreIds', resolve, reject);
+    });
+  },
+
+  // For the moment we only support full sync
+  sync: function(revisionId) {
+    return new Promise((resolve, reject) => {
+      Rest.get(SERVICE_URL + '/' + this._localDatastore.name + '/' +
+        'sync/get_all' + '?token=' + this._token, {
+          success: (result) => {
+            console.log('Succesfully obtained the data remotely: ',
+                        typeof result);
+            var ids = [];
+            var operations = [];
+            this._isLocalOperation = true;
+            for(var prop in result) {
+              var obj = result[prop];
+              var id = Number(prop);
+              console.log('Obj obtained: ', id, obj.title);
+              ids.push(id);
+              operations.push(this._localDatastore.add(obj, id));
+            }
+
+            Promise.all(operations).then((addedIds) => {
+              console.log('Add operations result: ', addedIds);
+              return this._setIds(ids);
+            }).then(() => {
+                this._isLocalOperation = false;
+                resolve();
+            }, reject);
+          },
+
+          error: function(err) {
+            console.error('Error while calling the service');
+            reject(err);
+          },
+
+          timeout: function() {
+            console.error('Timeout while calling the service');
+            reject({
+              name: 'timeout'
+            });
+          }
+        },
+        {
+          operationsTimeout: 10000
+        });
+    });
+  },
+
+  _removeId: function(id) {
+    return new Promise(function(resolve, reject) {
+      asyncStorage.getItem('dataStoreIds', function onListReady(list) {
+        var index = list.indexOf(id);
+        if (index === -1) {
+          reject('not found');
+          return;
+        }
+        list.splice(index, 1);
+        asyncStorage.setItem('dataStoreIds', list, resolve, reject);
+      });
+    });
+  },
+
+  _addId: function (id) {
+    return new Promise(function(resolve, reject) {
+      asyncStorage.getItem('dataStoreIds', function onListReady(list) {
+        var newList = list || [];
+        newList.push(id);
+        asyncStorage.setItem('dataStoreIds', newList, resolve.bind(null, id),
+                             reject);
+      });
+    });
+  },
+
+  _clearIds: function() {
+    return new Promise(function(resolve, reject) {
+      asyncStorage.setItem('dataStoreIds', null, resolve, reject);
+    });
+  },
+
+  _setIds: function(idList) {
+    return new Promise(function(resolve, reject) {
+      asyncStorage.setItem('dataStoreIds', idList, resolve, reject);
+    });
   },
 
   _saveBlobData: function() {
@@ -119,6 +218,12 @@ CloudDatastore.prototype = {
   },
 
   handleEvent: function(e) {
+    if (this._isLocalOperation === true) {
+      console.log('It is a local operation ....');
+      this._isLocalOperation = false;
+      return;
+    }
+
     var self = this;
 
     console.log('Event listener: ', e.type, e.id, e.operation);
@@ -201,12 +306,9 @@ CloudDatastore.prototype = {
         this._objectBlob = null;
         this._saveBlobData();
         Rest.get(SERVICE_URL + '/' + self._localDatastore.name + '/' +
-                 encodeURIComponent('__all__') + '?token=' + self._token, null,
-            {
-              method: 'DELETE',
-              operationsTimeout: 10000
-          },{
-          success: function() {
+                 encodeURIComponent('__all__') + '?token=' + self._token,
+          {
+            success: function() {
             console.log('Succesfully cleared remotely')
           },
           error: function() {
@@ -215,7 +317,10 @@ CloudDatastore.prototype = {
           timeout: function() {
             console.error('Timeout while calling the service');
           }
-        });
+        }, {
+              method: 'DELETE',
+              operationsTimeout: 10000
+          });
       break;
     }
   }

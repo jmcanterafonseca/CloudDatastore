@@ -38,9 +38,31 @@ var ListManager = (function() {
   document.querySelector('#attachment-remove-button').addEventListener('click',
                                                     removeAttachment);
 
+  document.querySelector('#local-clear-button').addEventListener('click',
+                                                                  localClear);
+  document.querySelector('#sync-data-button').addEventListener('click',
+                                                                  syncData);
+
   var noteAttachment, attachmentThumbnail;
 
   var cloudDatastore, datastore;
+
+  function syncData() {
+    cloudDatastore.sync().then(() => {
+      alert('sync done');
+      renderList();
+      backToList(notesSettingsView);
+    }, () => alert('error'));
+  }
+
+  function localClear() {
+    cloudDatastore.clear({
+      onlyLocal: true
+    }).then(() => {
+        notesListElement.innerHTML = '';
+        backToList(notesSettingsView);
+    }, () => alert('error'));
+  }
 
   function onAttach() {
     var activity = new MozActivity({
@@ -224,23 +246,15 @@ var ListManager = (function() {
     backToList(notesFormView);
   }
 
-  function clearNotesIds() {
-    return new Promise(function(resolve, reject) {
-      asyncStorage.setItem('notesList', null, resolve, reject);
-    });
-  }
-
   function clearMobileId() {
     return new Promise(function(resolve, reject) {
-      asyncStorage.setItem('mobileIdData', null, resolve, reject);
+      window.asyncStorage.setItem('mobileIdData', null, resolve, reject);
     });
   }
 
   function clearNotes() {
-    return clearNotesIds().then(function() {
-      return cloudDatastore.clear();
-    }).then(function() {
-        return clearMobileId();
+    return cloudDatastore.clear().then(function() {
+      return clearMobileId();
     });
   }
 
@@ -252,10 +266,7 @@ var ListManager = (function() {
 
   function addNote() {
     var formData = getFormData();
-    return cloudDatastore.add(formData.note).then(function(newId) {
-      console.log('Added: ', newId);
-      return addNoteId(newId);
-    });
+    return cloudDatastore.add(formData.note);
   }
 
   function updateNote() {
@@ -264,33 +275,7 @@ var ListManager = (function() {
   }
 
   function deleteNote(noteId) {
-    return cloudDatastore.remove(noteId).then(function() {
-      return removeNoteId(noteId);
-    });
-  }
-
-  function removeNoteId(noteId) {
-    return new Promise(function(resolve, reject) {
-      asyncStorage.getItem('notesList', function onListReady(list) {
-        var index = list.indexOf(noteId);
-        if (index === -1) {
-          reject('not found');
-          return;
-        }
-        list.splice(index, 1);
-        asyncStorage.setItem('notesList', list, resolve, reject);
-      });
-    });
-  }
-
-  function addNoteId(noteId) {
-    return new Promise(function(resolve, reject) {
-      asyncStorage.getItem('notesList', function onListReady(list) {
-        var newList = list || [];
-        newList.push(noteId);
-        asyncStorage.setItem('notesList', newList, resolve, reject);
-      });
-    });
+    return cloudDatastore.remove(noteId);
   }
 
   function getFormData() {
@@ -308,7 +293,7 @@ var ListManager = (function() {
 
   function renderList() {
     notesListElement.innerHTML = '';
-    window.asyncStorage.getItem('notesList', function listReady(list) {
+    cloudDatastore.getAll().then(function listReady(list) {
       if (!Array.isArray(list) || list.length === 0) {
         return;
       }
