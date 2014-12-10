@@ -1,6 +1,10 @@
 CloudDatastore
 ==============
 
+Original idea and implementation: José Manuel Cantera Fonseca (jmcf@tid.es)
+
+Copyright (c) 2014 Telefónica Investigación y Desarrollo (S.A.U.)
+
 CloudDatastore is an experimental technology intended to create a data layer for mobile web
 applications. The persistence of such a data layer is managed both locally and in the cloud. As a result,
 applications can work seamlessly in offline or online mode. Furthermore, as data will not be confined to a
@@ -27,10 +31,8 @@ CloudDatastore is composed by the following artefacts:
 
 * Javascript library in charge of synchronizing the data to the Cloud
 * Server Backend based on Node.js, Express, Redis and an Object Storage service provided by Telefónica.
-* CloudNotes a Firefox OS Application used to experiment and drive the development of the technology.
-
-Original idea and implementation: José Manuel Cantera Fonseca (jmcf@tid.es)
-
-Copyright (c) 2014 Telefónica Investigación y Desarrollo (S.A.U.)
+* CloudNotes, a Firefox OS Application used to experiment and drive the development of the technology.
 
 The architecture of an application making use of this technology is depicted below:
+
+![alt tag](https://raw.github.com/jmcanterafonseca/CloudDatastore/master/CloudDatastore.png)
