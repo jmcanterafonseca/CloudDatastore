@@ -2,7 +2,6 @@ CloudDatastore
 ==============
 
 Original idea and implementation: José Manuel Cantera Fonseca (jmcf@tid.es)
-
 Copyright (c) 2014 Telefónica Investigación y Desarrollo (S.A.U.)
 
 CloudDatastore is an experimental technology intended to create a data layer for mobile web
