@@ -6,16 +6,22 @@ applications. The persistence of such a data layer is managed both locally and i
 applications can work seamlessly in offline or online mode. Furthermore, as data will not be confined to a
 single device, users will be able to get access to their data from any device.
 
-The initial implementation is based on Mozilla's Datastore technology for Firefox OS. Currently the Datastore API is only available for
-Firefox OS certified applications, but we intend to support a regular IndexedDB as well. To manage authentication, We plan to support
-multiple authentication systems, but the initial implementation is using Firefox OS MobileId.
+The initial implementation is based on Mozilla's
+[Datastore](https://developer.mozilla.org/en-US/docs/Web/API/Data_Store_API)
+technology for Firefox OS. Currently the Datastore API is only available for
+Firefox OS certified applications, but we intend to support a regular
+[IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) as well.
+To manage authentication, We plan to support
+multiple authentication systems, but the initial implementation is using Firefox OS
+[MobileId](https://wiki.mozilla.org/WebAPI/MobileIdentity).
 
 The main advantage of this technology is that data is synchronized to the cloud transparently to developers.
 From a developer's perspective, they only have to use a regular Firefox OS IndexedDB or Datastore. How the data is synchronized
 to the Cloud it is totally up to the CloudDatastore technology.
 
-Furthermore, in the future we are planning to integrate the Firefox OS Push Server, allowing to trigger spontaneous data
-synchronizations.
+Furthermore, in the future we are planning to integrate the Firefox OS
+[Push](https://developer.mozilla.org/en-US/docs/Web/API/Simple_Push_API)
+technology, allowing to trigger spontaneous data synchronizations.
 
 CloudDatastore is composed by the following artefacts:
 
