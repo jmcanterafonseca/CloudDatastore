@@ -15,6 +15,7 @@ function CloudDatastore(localDatastore, token) {
 
 CloudDatastore.prototype = {
   put: function(obj, key) {
+    this._isLocalOperation = false;
     return this._localDatastore.put(obj, key);
   },
 
@@ -23,12 +24,14 @@ CloudDatastore.prototype = {
   },
 
   add: function(obj, key) {
+    this._isLocalOperation = false;
     return this._localDatastore.add(obj, key).then((id) => {
       return this._addId(id);
     });
   },
 
   remove: function(key) {
+    this._isLocalOperation = false;
     this._localDatastore.remove(key).then(() => {
       return this._removeId(key);
     });
@@ -37,6 +40,9 @@ CloudDatastore.prototype = {
   clear: function(options) {
     if (options && options.onlyLocal === true) {
       this._isLocalOperation = true;
+    }
+    else {
+      this._isLocalOperation = false;
     }
     return this._localDatastore.clear().then(() => {
       return this._clearIds();
@@ -60,9 +66,14 @@ CloudDatastore.prototype = {
                         typeof result);
             var ids = [];
             var operations = [];
+            // Avoid to process modification events (onchange event)
             this._isLocalOperation = true;
-            for(var prop in result) {
-              var obj = result[prop];
+
+            var objectData = result.objectData;
+            var mediaInfo = result.mediaInfo;
+
+            for(var prop in objectData) {
+              var obj = objectData[prop];
               var id = Number(prop);
               console.log('Obj obtained: ', id, obj.title);
               ids.push(id);
@@ -73,8 +84,35 @@ CloudDatastore.prototype = {
               console.log('Add operations result: ', addedIds);
               return this._setIds(ids);
             }).then(() => {
-                this._isLocalOperation = false;
-                resolve();
+                // Now we need to get all the media
+                var mediaOperations = [];
+                var mediaSync = new MediaSynchronizer(this._token,
+                            this._localDatastore.name, Object.keys(mediaInfo));
+                mediaSync.start();
+
+                mediaSync.onmediaready = (id, blob) => {
+                  if (!blob) {
+                    console.warn('No blob could be retrieved for: ', id);
+                    return;
+                  }
+                  // Once the blob is ready it has to be persisted in the local
+                  // database
+                  var objectId = mediaInfo[id].objId;
+                  var objectProperty = mediaInfo[id].objProp;
+
+                  var object = objectData[objectId];
+                  object[objectProperty] = blob;
+                  // Here we update the corresponding object
+                  mediaOperations.push(
+                            this._localDatastore.put(object, Number(objectId)));
+                };
+
+                mediaSync.onfinish = () => {
+                  Promise.all(mediaOperations).then(() => {
+                    resolve();
+                  });
+                }
+
             }, reject);
           },
 
@@ -220,7 +258,6 @@ CloudDatastore.prototype = {
   handleEvent: function(e) {
     if (this._isLocalOperation === true) {
       console.log('It is a local operation ....');
-      this._isLocalOperation = false;
       return;
     }
 
@@ -401,3 +438,56 @@ function RestPost(url, data, options, cbs) {
 
   xhr.send(postData);
 }
+
+
+var MediaSynchronizer = function(token, dsName, mediaList) {
+  var next = 0;
+  var self = this;
+
+  this.mediaList = mediaList;
+  this.dsName = dsName;
+  this.token = token;
+
+  this.start = function() {
+    retrieveMedia(this.mediaList[next]);
+  };
+
+  function mediaRetrieved(blob) {
+    if (typeof self.onmediaready === 'function') {
+      var id = self.mediaList[next];
+
+      setTimeout(function() {
+        self.onmediaready(id, blob);
+      },0);
+    }
+
+    // And lets go for the next
+    next++;
+    if (next < self.mediaList.length) {
+      retrieveMedia(self.mediaList[next]);
+    }
+    else {
+      if (typeof self.onfinish === 'function') {
+        self.onfinish();
+      }
+    }
+  }
+
+  function retrieveMedia(mediaId) {
+    console.log('Going to retrieve media: ', mediaId);
+
+    Rest.get(SERVICE_URL + '/' + self.dsName + '/' + 'blob' + '/' + mediaId +
+             '?token=' + self.token, {
+      success: mediaRetrieved,
+      error: (err) => mediaRetrieved(null),
+      timeout: () => {
+        console.error('Timeout!!!');
+        // In this case we would need to have an array of pending tasks
+        mediaRetrieved(null);
+      }
+    }, {
+        operationsTimeout: 10000,
+        responseType: 'blob'
+    });
+  }
+};
