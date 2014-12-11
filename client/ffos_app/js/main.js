@@ -255,6 +255,14 @@ var ListManager = (function() {
   function clearNotes() {
     return cloudDatastore.clear().then(function() {
       return clearMobileId();
+    }).then(function() {
+      return clearAsyncStorage();
+    })
+  }
+
+  function clearAsyncStorage() {
+    return new Promise(function(resolve, reject) {
+      window.asyncStorage.clear(resolve, reject);
     });
   }
 

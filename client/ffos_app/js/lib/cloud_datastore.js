@@ -11,6 +11,8 @@ function CloudDatastore(localDatastore, token) {
   // To associate object id with blob
   this._objectBlob = null;
   localDatastore.addEventListener('change', this);
+  window.addEventListener('online', this);
+  window.addEventListener('offline', this);
 }
 
 CloudDatastore.prototype = {
@@ -255,6 +257,46 @@ CloudDatastore.prototype = {
     });
   },
 
+  handleOnline: function(e) {
+    console.log('Online changed ...', navigator.onLine);
+    if (navigator.onLine === true) {
+      // If there are pending operations to be executed against the server
+      // We execute them
+      this._getPendingOperations().then((pendingOperations) => {
+        console.log('Pending operations: ', pendingOperations);
+        if (!pendingOperations) {
+          return;
+        }
+        console.log('Going to execute pending operations ...',
+                    pendingOperations);
+        pendingOperations.forEach((aOperation) => {
+          aOperation.type = 'change';
+          this.handleEvent(aOperation);
+        });
+      });
+    }
+  },
+
+  _addPendingOperation: function(operation) {
+    return this._getPendingOperations().then((operations) => {
+      var ops = operations || [];
+      ops.push(operation);
+      return this._savePendingOperations(ops);
+    });
+  },
+
+  _savePendingOperations: function(list) {
+    return new Promise(function(resolve, reject) {
+      window.asyncStorage.setItem('pendingOperations', list, resolve, reject);
+    });
+  },
+
+  _getPendingOperations: function() {
+    return new Promise(function(resolve, reject) {
+      window.asyncStorage.getItem('pendingOperations', resolve, reject);
+    });
+  },
+
   handleEvent: function(e) {
     if (this._isLocalOperation === true) {
       console.log('It is a local operation ....');
@@ -263,18 +305,32 @@ CloudDatastore.prototype = {
 
     var self = this;
 
-    console.log('Event listener: ', e.type, e.id, e.operation);
+    if (e.type === 'online' || e.type === 'offline') {
+      this.handleOnline(e);
+      return;
+    }
 
     if (e.type !== 'change') {
       return;
     }
 
+    console.log('Event listener: ', e.type, e.id, e.operation);
+
     var affectedKey = e.id;
     var operation = e.operation;
-
     var revisionId = this._localDatastore.revisionId;
-
     console.log('Revision Id: ', revisionId, operation);
+
+    if (navigator.onLine === false) {
+      console.log('Navigator is not online ... saving pending OP');
+
+      this._addPendingOperation({
+        id: affectedKey,
+        operation: operation
+      });
+
+      return;
+    }
 
     // And now execute the operation against the cloud
     switch (operation) {
@@ -287,7 +343,7 @@ CloudDatastore.prototype = {
                   method: 'PUT'
                 },{
             success: function() {
-              console.log('Succesfully added to the service')
+              console.log('Succesfully added to the service: ', affectedKey)
             },
             error: function() {
               console.error('Error while calling the service');
