@@ -8,6 +8,7 @@
     <link href="shared/style/input_areas.css" rel="stylesheet" type="text/css">
     <link href="shared/style/buttons.css" rel="stylesheet" type="text/css">
     <link href="shared/style/lists.css" rel="stylesheet" type="text/css">
+    <link href="shared/style/toolbars.css" rel="stylesheet" type="text/css">
 
 
     <link href="style/cloud_datastore.css" rel="stylesheet" type="text/css">
@@ -62,8 +63,6 @@
             <textarea id="text-data" name="text-data" x-inputmode="latin-prose" placeholder="Note Content"></textarea>
           </label>
 
-          <button id="attach-button" type=button>Attach File ...</button>
-
           <!--
           <input type=file name=attachment>
           -->
@@ -76,7 +75,10 @@
           <ul id="attachments-list" ></ul>
         </section>
 
-        <button id="delete" class="danger">Delete Note</button>
+        <div role="toolbar">
+          <button data-icon="attachment" id="attach-button">Attach file...</button>
+          <button data-icon="delete" id="delete">Delete note</button>
+        </div>
       </section>
     </section>
 
