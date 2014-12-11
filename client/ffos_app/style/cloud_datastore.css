@@ -76,13 +76,6 @@ textarea[name="text-data"] {
   display: none;
 }
 
-button#delete {
-  position: absolute;
-  bottom: 0;
-  margin: 2rem;
-  width: calc(100% - 4rem);
-}
-
 .hidden {
   display: none;
 }
@@ -122,8 +115,9 @@ ul#attachments-list > li > img {
   margin-bottom: 0rem;
 }
 
-#attach-button {
-  margin-top: 2rem;
+div[role="toolbar"] {
+  position: absolute;
+  bottom: 0;
 }
 
 /*
