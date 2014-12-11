@@ -120,6 +120,10 @@ div[role="toolbar"] {
   bottom: 0;
 }
 
+.separator {
+  width: 65%;
+}
+
 /*
 #attachment-section {
   margin-top: 0.5rem;
