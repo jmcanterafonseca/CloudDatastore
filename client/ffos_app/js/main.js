@@ -326,7 +326,7 @@ var ListManager = (function() {
     }
 
     li.innerHTML += '<a href="#">' +
-                      '<p>' + aNote.title + '</p>' +
+                      '<p><strong>' + aNote.title + '</strong></p>' +
                       '<p>' + aNote.body +  '</p>' +
                     '</a>';
 
