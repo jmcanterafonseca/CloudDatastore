@@ -310,8 +310,18 @@ var ListManager = (function() {
 
   function buildListNode(aNote) {
     var li = document.createElement('li');
-    li.innerHTML = '<p>' + '<strong>' + aNote.title + '</strong>' +
-                    ': ' + aNote.body +  '</p>';
+
+    if (aNote.attachment) {
+      li.innerHTML = '<aside class="pack-end">' +
+                      '<i data-icon="attachment"></i>' +
+                     '</aside>';
+    }
+
+    li.innerHTML += '<a href="#">' +
+                      '<p>' + aNote.title + '</p>' +
+                      '<p>' + aNote.body +  '</p>' +
+                    '</a>';
+
     li.dataset.uid = aNote.id;
 
     return li;
