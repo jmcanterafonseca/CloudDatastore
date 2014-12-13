@@ -1,17 +1,17 @@
 'use strict';
 
-window.asyncStorage.getItem('mobileIdData', function(data) {
-  if (!data) {
-    navigator.getMobileIdAssertion({
-      forceSelection: true
-    }).then(onLogin, onLoginError);
+function login() {
+  window.asyncStorage.getItem('mobileIdData', function(data) {
+    if (!data) {
+      navigator.getMobileIdAssertion({
+        forceSelection: true
+      }).then(onLogin, onLoginError);
 
-    return;
-  }
-
-  ListManager.start(data.token);
-});
-
+      return;
+    }
+    ListManager.start(data.token);
+  });
+}
 
 function onLogin(assertion) {
   var registerUrl = 'http://81.45.21.204/ds/register';
@@ -42,3 +42,5 @@ function onRegistered(response) {
 
   ListManager.start(response.token);
 }
+
+login();

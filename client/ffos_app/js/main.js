@@ -25,10 +25,18 @@ var ListManager = (function() {
   document.querySelector('#settings-done-button').addEventListener('click',
                                       backToList.bind(null, notesSettingsView));
 
-  document.querySelector('#clear-button').addEventListener('click',
-                                                           onResetNotes);
+  document.querySelector('#logout-button').addEventListener('click',
+                                                           onLogout);
 
-  document.querySelector('#delete').addEventListener('click', onDeleteNote);
+  document.querySelector('#clear-button').addEventListener('click', onClear);
+
+  document.querySelector('#reload-button').addEventListener('click',
+                                                                  onReload);
+  document.querySelector('#sync-data-button').addEventListener('click',
+                                                                  syncData);
+
+  document.querySelector('#delete-button').addEventListener('click',
+                                                            onDeleteNote);
 
   document.querySelector('#attach-button').addEventListener('click', onAttach);
 
@@ -38,14 +46,13 @@ var ListManager = (function() {
   document.querySelector('#attachment-remove-button').addEventListener('click',
                                                     removeAttachment);
 
-  document.querySelector('#local-clear-button').addEventListener('click',
-                                                                  localClear);
-  document.querySelector('#sync-data-button').addEventListener('click',
-                                                                  syncData);
-
   var noteAttachment, attachmentThumbnail;
 
   var cloudDatastore, datastore;
+
+  function onReload() {
+
+  }
 
   function syncData() {
     cloudDatastore.sync().then(() => {
@@ -59,7 +66,7 @@ var ListManager = (function() {
     cloudDatastore.clear({
       onlyLocal: true
     }).then(() => {
-        notesListElement.innerHTML = '';
+        emptyNotesElement();
         backToList(notesSettingsView);
     }, () => alert('error'));
   }
@@ -197,7 +204,6 @@ var ListManager = (function() {
 
   function onDeleteNote() {
     var noteId = Number(getFormData().id);
-
     deleteNote(noteId).then(onNoteSaved, () => alert('error'));
   }
 
@@ -252,12 +258,9 @@ var ListManager = (function() {
     });
   }
 
-  function clearNotes() {
-    return cloudDatastore.clear().then(function() {
-      return clearMobileId();
-    }).then(function() {
-      return clearAsyncStorage();
-    })
+  function onClear() {
+    cloudDatastore.clear().then(emptyNotesElement, () => alert('error'));
+    backToList(notesSettingsView);
   }
 
   function clearAsyncStorage() {
@@ -266,10 +269,17 @@ var ListManager = (function() {
     });
   }
 
-  function onResetNotes() {
-    clearNotes().then(() => notesListElement.innerHTML = '',
-                      () => alert('error'));
-    backToList(notesSettingsView);
+  function onLogout() {
+    return cloudDatastore.clear({
+      onlyLocal: true
+    }).then(() => {
+      return clearMobileId();
+    }).then(function() {
+      return clearAsyncStorage();
+    }).then(() => {
+      emptyNotesElement();
+      window.login();
+    });
   }
 
   function addNote() {
@@ -293,18 +303,27 @@ var ListManager = (function() {
         title: formData['title'].value,
         body: formData['text-data'].value,
         attachment: noteAttachment,
-        attachmentThumbnail: attachmentThumbnail
+        attachmentThumbnail: attachmentThumbnail,
+        date: new Date()
       },
       id: formData['noteId'].value
     }
   }
 
-  function renderList() {
+  function emptyNotesElement() {
     notesListElement.innerHTML = '';
+    document.querySelector('section.notes > header').classList.add('hidden');
+  }
+
+  function renderList() {
+    emptyNotesElement();
+
     cloudDatastore.getAll().then(function listReady(list) {
       if (!Array.isArray(list) || list.length === 0) {
         return;
       }
+      document.querySelector('section.notes > header').
+                                                  classList.remove('hidden');
       datastore.get.apply(datastore, list).then(function(notes) {
         var notesList = Array.isArray(notes) ? notes : [notes];
         notesList.forEach(function(aNote, index) {
@@ -325,13 +344,10 @@ var ListManager = (function() {
                      '</aside>';
     }
 
-    li.innerHTML += '<a href="#">' +
-                      '<p>' + aNote.title + '</p>' +
-                      '<p>' + aNote.body +  '</p>' +
-                    '</a>';
+    li.innerHTML += '<a href="#"><p>' + '<strong>' + aNote.title + '</strong>' +
+                    '</p>' + '<p class="note-body">' + aNote.body +  '</p></a>';
 
     li.dataset.uid = aNote.id;
-
     return li;
   }
 
@@ -399,6 +415,7 @@ var ListManager = (function() {
 
   function init(token) {
     if (cloudDatastore) {
+      cloudDatastore.setToken(token);
       return Promise.resolve();
     }
 

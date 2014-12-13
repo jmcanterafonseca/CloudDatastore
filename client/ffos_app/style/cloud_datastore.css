@@ -12,6 +12,12 @@ html, body {
   pointer-events: none;
 }
 
+#notes-list {
+  height: 100%;
+  width: calc(100% + 1.5rem);
+  overflow-y: auto;
+}
+
 .view {
   position: absolute;
   top: 0;
@@ -55,29 +61,34 @@ form {
   margin-botton: 0rem;
 }
 
-/*
-section[data-type="list"], form {
-  margin: 0 2rem;
-}
-*/
-input[type="file"] {
-  width: 29rem;
-}
-
 textarea[name="text-data"] {
-  height: 30rem;
+  height: 35rem;
 }
 
 #notes-form-view[data-mode="edit"] button#delete {
-  display: block;
+  visibility: visible;
 }
 
 #notes-form-view[data-mode="add"] button#delete {
-  display: none;
+  visibility: hidden;
 }
 
 .hidden {
   display: none;
+}
+
+section.notes {
+  width: 100%;
+  height: 100%;
+}
+
+section.notes li * {
+  font-style: normal !important;
+}
+
+section.notes li {
+  padding-right: 1rem;
+  padding-left: 1rem;
 }
 
 ul#attachments-list > li {
@@ -120,8 +131,19 @@ div[role="toolbar"] {
   bottom: 0;
 }
 
-/*
-#attachment-section {
-  margin-top: 0.5rem;
+.separator {
+  width: 65%;
 }
-*/
+
+.vis-hidden {
+  visibility: hidden;
+}
+
+i[data-icon="attachment"] {
+  margin-right: 2rem;
+}
+
+.note-body {
+  padding-left: 1rem;
+  font-style: italic;
+}

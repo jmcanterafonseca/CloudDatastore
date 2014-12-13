@@ -26,7 +26,6 @@
     <script src="bower_components/gaia-icons/gaia-icons.js"></script>
     <script src="bower_components/gaia-component/gaia-component.js"></script>
     <script src="bower_components/gaia-header/gaia-header.js"></script>
-    <script src="bower_components/gaia-button/gaia-button.js"></script>
   </head>
 
   <body role="application" class="theme-productivity">
@@ -36,16 +35,19 @@
         <button id="add-note-button" data-icon="add" data-l10n-id="addButton"></button>
         <button id="settings-button" data-icon="settings" data-l10n-id="settingsButton"></button>
       </gaia-header>
-
-      <section data-type="list">
-        <ul id="notes-list">
-          <!--
-          <li>
-            <p>Note</p>
-          </li>
-          -->
-        </ul>
+      <section class="view-body">
+        <section data-type="list" class="notes">
+          <header class="hidden">Today</header>
+          <ul id="notes-list">
+          </ul>
+        </section>
       </section>
+      <div role="toolbar">
+        <button data-icon="sync" id="sync-data-button">Sync Data</button>
+        <button data-icon="reload" id="reload-button">Reload Data</button>
+        <button data-icon="delete" id="clear-button">Clear Notes</button>
+        <button data-icon="contacts" id="logout-button">Logout</button>
+      </div>
     </section>
 
     <section id="notes-form-view" role="region" class="view view-hidden" class="theme-productivity">
@@ -77,7 +79,8 @@
 
         <div role="toolbar">
           <button data-icon="attachment" id="attach-button">Attach file...</button>
-          <button data-icon="delete" id="delete">Delete note</button>
+          <span class="separator"></span>
+          <button data-icon="delete" id="delete-button">Delete note</button>
         </div>
       </section>
     </section>
@@ -101,12 +104,6 @@
       <section class="view-body">
         <div id="settings-content">
           <p>Logged as: <span id="logged-as"></span></p>
-          <br><br>
-          <button id="clear-button" class="danger">Delete All</button>
-          <br><br>
-          <button id="local-clear-button">Delete Local Data</button>
-          <br><br>
-          <button id="sync-data-button" class="recommend">Sync Data</button>
         </div>
       </section>
     </section>
