@@ -12,7 +12,8 @@
     "systemXHR": {},
     "mobileid": {
       "description": "Allows to obtain user's mobile phone number"
-    }
+    },
+    "idle":{}
   },
 
   "orientation": "default",

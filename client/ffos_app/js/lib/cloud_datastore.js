@@ -23,9 +23,18 @@ function CloudDatastore(localDatastore, token) {
   localDatastore.addEventListener('change', this);
   window.addEventListener('online', this);
   window.addEventListener('offline', this);
+
+  navigator.addIdleObserver(this._idleObserver);
 }
 
 CloudDatastore.prototype = {
+
+  _idleObserver: {
+    time: 3,
+    onidle: () => {
+      this._saveRevisionMetadata();
+    }
+  },
 
   put: function(obj, key, options) {
     this._isLocalOperation = options && options.onlyLocal;
@@ -42,7 +51,9 @@ CloudDatastore.prototype = {
 
     this._localDatastore.addEventListener('change', datastoreSequence);
     return this._retrieveRevisionMetadata().then(() => {
-      return this._localDatastore.put(obj, key);
+      return this._localDatastore.put(obj, key).then(() => {
+        return this._addId(key);
+      });
     });
   },
 
@@ -76,7 +87,7 @@ CloudDatastore.prototype = {
     var originalRevisionId = this._localDatastore.revisionId;
     console.log('Original Revision Id: ', this._localDatastore.revisionId);
 
-    var datastoreSequence = function(revisionId, e) {
+    var datastoreSequence = function(revisionId, isLocal, e) {
       this._localDatastore.removeEventListener('change', datastoreSequence);
       if (e.operation !== 'removed' && e.id !== key || isLocal) {
         return;
@@ -137,6 +148,26 @@ CloudDatastore.prototype = {
     });
   },
 
+  _saveRevisionMetadata: function() {
+    return this._saveRevisionGraph().then(() => {
+      return this._saveLocalRemoteRevisions();
+    });
+  },
+
+  _saveRevisionGraph: function() {
+    return new Promise(function(resolve, reject) {
+      window.asyncStorage.setItem('revisionGraph', this._revisionGraph,
+                                  resolve, reject);
+    });
+  },
+
+  _saveLocalRemoteRevisions: function() {
+    return new Promise(function(resolve, reject) {
+      window.asyncStorage.setItem('localRemoteRevisions',
+                                  this._localRemoteRevisions, resolve, reject);
+    });
+  },
+
   get revisionId() {
     var localRevId = this._localDatastore.revisionId;
     var remoteRevision;
@@ -174,7 +205,7 @@ CloudDatastore.prototype = {
   _clearRevisionMetadata: function() {
     this._localRemoteRevisions = null;
     this._revisionGraph = null;
-    
+
     return new Promise(function(resolve, reject) {
       window.asyncStorage.removeItem('revisionGraph', function done() {
         window.asyncStorage.removeItem('localRemoteRevisions', resolve, reject);
@@ -197,69 +228,38 @@ CloudDatastore.prototype = {
 
         console.log('Current Remote Revision Id: ', revisionId);
 
+        if (revisionId !== 0) {
+          Rest.get(SERVICE_URL + '/' + this._localDatastore.name + '/' +
+          'sync/from' + '?token=' + this._token + '&revisionId=' + revisionId, {
+            success: (syncData) => {
+              if (syncData.newRevisionId == revisionId) {
+                console.log('No changes since last revision!!!!');
+                return;
+              }
+              this._doSync(syncData, resolve, reject);
+            },
+            error: () => console.error('Error syncing: '),
+            timeout: () => console.error('Timeout syncing: ')
+          },
+          {
+            operationsTimeout: 10000
+          });
+          return;
+        }
+
         if (revisionId === 0) {
           Rest.get(SERVICE_URL + '/' + this._localDatastore.name + '/' +
           'sync/get_all' + '?token=' + this._token, {
-            success: (result) => {
+            success: (syncData) => {
               console.log('Succesfully obtained the data remotely: ',
                           typeof result);
-              var operations = [];
-
-              var objectData = result.objectData;
-              var mediaInfo = result.mediaInfo;
-
-              for(var prop in objectData) {
-                var obj = objectData[prop];
-                var id = Number(prop);
-                console.log('Obj obtained: ', id, obj.title);
-                operations.push(this.add(obj, id, {
-                  onlyLocal: true
-                }));
-              }
-
-              Promise.all(operations).then((addedIds) => {
-                console.log('Add operations result: ', addedIds);
-                // Now we need to get all the media
-                if (!mediaInfo) {
-                  resolve();
-                  return;
-                }
-
-                var mediaList = Object.keys(mediaInfo);
-                if (mediaList.length === 0) {
-                  resolve();
-                  return;
-                }
-
-                var mediaOperations = [];
-                var mediaSync = new MediaSynchronizer(this._token,
-                                          this._localDatastore.name, mediaList);
-                mediaSync.start();
-
-                mediaSync.onmediaready = (id, blob) => {
-                  if (!blob) {
-                    console.warn('No blob could be retrieved for: ', id);
-                    return;
-                  }
-                  // Once the blob is ready it has to be persisted in the local
-                  // database
-                  var objectId = mediaInfo[id].objId;
-                  var objectProperty = mediaInfo[id].objProp;
-
-                  var object = objectData[objectId];
-                  object[objectProperty] = blob;
-                  // Here we update the corresponding object
-                  mediaOperations.push(this.put(object, Number(objectId), {
-                    onlyLocal: true
-                  }));
-                };
-
-                mediaSync.onfinish = () => {
-                  Promise.all(mediaOperations).then(() => {
-                    resolve();
-                  });
-                }
-              }, reject);
+              var syncSuccess = () => {
+                var newLocalRevId = this._localDatastore.revisionId;
+                this._localRemoteRevisions[newLocalRevId] =
+                                                    syncData.newRevisionId;
+                resolve();
+              };
+              this._doSync(syncData, resolve, reject);
             },
 
             error: function(err) {
@@ -280,6 +280,76 @@ CloudDatastore.prototype = {
         }
       });
     });
+  },
+
+  _doSync: function(syncData, resolve, reject) {
+    var operations = [];
+
+    var updatedData = syncData.updatedData;
+    var removedData = syncData.removedData;
+
+    var objectData = updatedData.objectData;
+    var mediaInfo = updatedData.mediaInfo;
+
+    for(var prop in objectData) {
+      var obj = objectData[prop];
+      var id = Number(prop);
+      console.log('Obj obtained: ', id, obj.title);
+      operations.push(this.put(obj, id, {
+        onlyLocal: true
+      }));
+    }
+
+    var removeOperations = [];
+    for(var j = 0; j < removedData.length; j++) {
+      removeOperations.push(this.remove(removedData[j]));
+    }
+
+    Promise.all(removeOperations).then(() => {
+      return Promise.all(operations);
+    }).then((addedIds) => {
+      console.log('Add operations result: ', addedIds);
+      // Now we need to get all the media
+      if (!mediaInfo) {
+        resolve();
+        return;
+      }
+
+      var mediaList = Object.keys(mediaInfo);
+      if (mediaList.length === 0) {
+        resolve();
+        return;
+      }
+
+      var mediaOperations = [];
+      var mediaSync = new MediaSynchronizer(this._token,
+                                this._localDatastore.name, mediaList);
+      mediaSync.start();
+
+      mediaSync.onmediaready = (id, blob) => {
+        if (!blob) {
+          console.warn('No blob could be retrieved for: ', id);
+          return;
+        }
+        // Once the blob is ready it has to be persisted in the local
+        // database
+        var objectId = mediaInfo[id].objId;
+        var objectProperty = mediaInfo[id].objProp;
+
+        var object = objectData[objectId];
+        object[objectProperty] = blob;
+        // Here we update the corresponding object
+        mediaOperations.push(this.put(object, Number(objectId), {
+          onlyLocal: true
+        }));
+      };
+
+      mediaSync.onfinish = () => {
+        Promise.all(mediaOperations).then(() => {
+          resolve();
+        });
+      }
+    }, reject);
   },
 
   _removeId: function(id) {
@@ -303,6 +373,10 @@ CloudDatastore.prototype = {
     return new Promise(function(resolve, reject) {
       asyncStorage.getItem('dataStoreIds', function onListReady(list) {
         var newList = list || [];
+        if(newList.indexOf(id) !== -1) {
+          resolve(id);
+          return;
+        }
         newList.push(id);
         asyncStorage.setItem('dataStoreIds', newList, resolve.bind(null, id),
                              reject);

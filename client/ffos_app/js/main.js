@@ -208,6 +208,10 @@ var ListManager = (function() {
   }
 
   function onEditNote(e) {
+    if (!e.target.dataset.uid) {
+      return;
+    }
+
     resetAttachment();
 
     var uid = e.target.dataset.uid;
@@ -410,7 +414,10 @@ var ListManager = (function() {
   }
 
   function start(token) {
-    init(token).then(renderList, () => alert('error'));
+    init(token).then(function() {
+      renderList();
+      cloudDatastore.sync().then(() => console.log('Synced!!'));
+    }, () => alert('error'));
   }
 
   function init(token) {
