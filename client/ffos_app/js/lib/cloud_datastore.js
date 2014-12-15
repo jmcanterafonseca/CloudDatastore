@@ -23,18 +23,9 @@ function CloudDatastore(localDatastore, token) {
   localDatastore.addEventListener('change', this);
   window.addEventListener('online', this);
   window.addEventListener('offline', this);
-
-  navigator.addIdleObserver(this._idleObserver);
 }
 
 CloudDatastore.prototype = {
-
-  _idleObserver: {
-    time: 3,
-    onidle: () => {
-      this._saveRevisionMetadata();
-    }
-  },
 
   put: function(obj, key, options) {
     this._isLocalOperation = options && options.onlyLocal;
@@ -46,7 +37,7 @@ CloudDatastore.prototype = {
       if (e.operation !== 'updated' && e.id !== key || isLocal) {
         return;
       }
-      this._revisionGraph[revisionId] = e.revisionId;
+      this._addToRevisionGraph(revisionId, e.revisionId);
     }.bind(this, originalRevisionId, this._isLocalOperation);
 
     this._localDatastore.addEventListener('change', datastoreSequence);
@@ -71,7 +62,7 @@ CloudDatastore.prototype = {
       if (e.operation !== 'added' && e.id !== key || isLocal) {
         return;
       }
-      this._revisionGraph[revisionId] = e.revisionId;
+      this._addToRevisionGraph(revisionId, e.revisionId);
     }.bind(this, originalRevisionId, this._isLocalOperation);
 
     this._localDatastore.addEventListener('change', datastoreSequence);
@@ -92,7 +83,7 @@ CloudDatastore.prototype = {
       if (e.operation !== 'removed' && e.id !== key || isLocal) {
         return;
       }
-      this._revisionGraph[revisionId] = e.revisionId;
+      this._addToRevisionGraph(revisionId, e.revisionId);
     }.bind(this, originalRevisionId, this._isLocalOperation);
 
     this._localDatastore.addEventListener('change', datastoreSequence);
@@ -120,8 +111,8 @@ CloudDatastore.prototype = {
     this._token = token;
   },
 
-  _retrieveRevisionGraph: function() {
-    if (this._revisionGraph) {
+  _retrieveRevisionGraph: function(refresh) {
+    if (this._revisionGraph && !refresh) {
       return Promise.resolve(this._revisionGraph);
     }
     return new Promise((resolve, reject) => {
@@ -129,8 +120,8 @@ CloudDatastore.prototype = {
     });
   },
 
-  _retrieveLocalRemoteRevisions: function() {
-    if (this._localRemoteRevisions) {
+  _retrieveLocalRemoteRevisions: function(refresh) {
+    if (this._localRemoteRevisions && !refresh) {
       return Promise.resolve(this._localRemoteRevisions);
     }
     return new Promise((resolve, reject) => {
@@ -155,16 +146,33 @@ CloudDatastore.prototype = {
   },
 
   _saveRevisionGraph: function() {
-    return new Promise(function(resolve, reject) {
+    return new Promise((resolve, reject) => {
       window.asyncStorage.setItem('revisionGraph', this._revisionGraph,
                                   resolve, reject);
     });
   },
 
   _saveLocalRemoteRevisions: function() {
-    return new Promise(function(resolve, reject) {
+    return new Promise((resolve, reject) => {
       window.asyncStorage.setItem('localRemoteRevisions',
                                   this._localRemoteRevisions, resolve, reject);
+    });
+  },
+
+  _addToLocalRemoteRevisions: function(localRevId, remoteRevId) {
+    return this._retrieveLocalRemoteRevisions(true).then(() => {
+      this._localRemoteRevisions = this._localRemoteRevisions ||
+                                                          Object.create(null);
+      this._localRemoteRevisions[localRevId] = remoteRevId;
+      return this._saveLocalRemoteRevisions();
+    });
+  },
+
+  _addToRevisionGraph: function(oldRev, newRev) {
+    return this._retrieveRevisionGraph(true).then(() => {
+      this._revisionGraph = this._revisionGraph || Object.create(null);
+      this._revisionGraph[oldRev] = newRev;
+      return this._saveRevisionGraph();
     });
   },
 
@@ -236,7 +244,13 @@ CloudDatastore.prototype = {
                 console.log('No changes since last revision!!!!');
                 return;
               }
-              this._doSync(syncData, resolve, reject);
+              var syncSuccess = () => {
+                var newLocalRevId = this._localDatastore.revisionId;
+                this._addToLocalRemoteRevisions(newLocalRevId,
+                                                    syncData.newRevisionId);
+                resolve();
+              };
+              this._doSync(syncData, syncSuccess, reject);
             },
             error: () => console.error('Error syncing: '),
             timeout: () => console.error('Timeout syncing: ')
@@ -252,14 +266,14 @@ CloudDatastore.prototype = {
           'sync/get_all' + '?token=' + this._token, {
             success: (syncData) => {
               console.log('Succesfully obtained the data remotely: ',
-                          typeof result);
+                          syncData.newRevisionId);
               var syncSuccess = () => {
                 var newLocalRevId = this._localDatastore.revisionId;
-                this._localRemoteRevisions[newLocalRevId] =
-                                                    syncData.newRevisionId;
+                this._addToLocalRemoteRevisions(newLocalRevId,
+                                                    syncData.newRevisionId);
                 resolve();
               };
-              this._doSync(syncData, resolve, reject);
+              this._doSync(syncData, syncSuccess, reject);
             },
 
             error: function(err) {
@@ -291,65 +305,76 @@ CloudDatastore.prototype = {
     var objectData = updatedData.objectData;
     var mediaInfo = updatedData.mediaInfo;
 
-    for(var prop in objectData) {
-      var obj = objectData[prop];
-      var id = Number(prop);
-      console.log('Obj obtained: ', id, obj.title);
-      operations.push(this.put(obj, id, {
+    var precondition = Promise.resolve();
+
+    if (syncData.cleared) {
+      console.log('Is clear!!!!!!!!!');
+      precondition = this.clear({
         onlyLocal: true
-      }));
+      });
     }
 
-    var removeOperations = [];
-    for(var j = 0; j < removedData.length; j++) {
-      removeOperations.push(this.remove(removedData[j]));
-    }
-
-    Promise.all(removeOperations).then(() => {
-      return Promise.all(operations);
-    }).then((addedIds) => {
-      console.log('Add operations result: ', addedIds);
-      // Now we need to get all the media
-      if (!mediaInfo) {
-        resolve();
-        return;
-      }
-
-      var mediaList = Object.keys(mediaInfo);
-      if (mediaList.length === 0) {
-        resolve();
-        return;
-      }
-
-      var mediaOperations = [];
-      var mediaSync = new MediaSynchronizer(this._token,
-                                this._localDatastore.name, mediaList);
-      mediaSync.start();
-
-      mediaSync.onmediaready = (id, blob) => {
-        if (!blob) {
-          console.warn('No blob could be retrieved for: ', id);
-          return;
-        }
-        // Once the blob is ready it has to be persisted in the local
-        // database
-        var objectId = mediaInfo[id].objId;
-        var objectProperty = mediaInfo[id].objProp;
-
-        var object = objectData[objectId];
-        object[objectProperty] = blob;
-        // Here we update the corresponding object
-        mediaOperations.push(this.put(object, Number(objectId), {
+    precondition.then(() => {
+      for(var prop in objectData) {
+        var obj = objectData[prop];
+        var id = Number(prop);
+        console.log('Obj obtained: ', id, obj.title);
+        operations.push(this.put(obj, id, {
           onlyLocal: true
         }));
-      };
-
-      mediaSync.onfinish = () => {
-        Promise.all(mediaOperations).then(() => {
-          resolve();
-        });
       }
-    }, reject);
+
+      var removeOperations = [];
+      for(var j = 0; j < removedData.length; j++) {
+        removeOperations.push(this.remove(Number(removedData[j])));
+      }
+
+      Promise.all(removeOperations).then(() => {
+        return Promise.all(operations);
+      }).then((addedIds) => {
+        console.log('Add operations result: ', addedIds);
+        // Now we need to get all the media
+        if (!mediaInfo) {
+          resolve();
+          return;
+        }
+
+        var mediaList = Object.keys(mediaInfo);
+        if (mediaList.length === 0) {
+          resolve();
+          return;
+        }
+
+        var mediaOperations = [];
+        var mediaSync = new MediaSynchronizer(this._token,
+                                  this._localDatastore.name, mediaList);
+        mediaSync.start();
+
+        mediaSync.onmediaready = (id, blob) => {
+          if (!blob) {
+            console.warn('No blob could be retrieved for: ', id);
+            return;
+          }
+          // Once the blob is ready it has to be persisted in the local
+          // database
+          var objectId = mediaInfo[id].objId;
+          var objectProperty = mediaInfo[id].objProp;
+
+          var object = objectData[objectId];
+          object[objectProperty] = blob;
+          // Here we update the corresponding object
+          mediaOperations.push(this.put(object, Number(objectId), {
+            onlyLocal: true
+          }));
+        };
+
+        mediaSync.onfinish = () => {
+          Promise.all(mediaOperations).then(() => {
+            resolve();
+          });
+        }
+      }, reject);
+    });
   },
 
   _removeId: function(id) {
@@ -566,7 +591,7 @@ CloudDatastore.prototype = {
                   method: 'PUT'
                 },{
              success: (response) => {
-              this._localRemoteRevisions[revisionId] = response.revisionId;
+              this._addToLocalRemoteRevisions(revisionId,  response.revisionId);
               console.log('Succesfully added to the service: ', affectedKey,
                           response.revisionId);
             },
@@ -589,7 +614,7 @@ CloudDatastore.prototype = {
                 method: 'POST'
             },{
             success: (response) => {
-              this._localRemoteRevisions[revisionId] = response.revisionId;
+              this._addToLocalRemoteRevisions(revisionId,  response.revisionId);
               console.log('Succesfully updated remotely: ', affectedKey,
                           response.revisionId)
             },
@@ -611,7 +636,8 @@ CloudDatastore.prototype = {
                     operationsTimeout: 10000
               }, {
                   success: (response) => {
-                    this._localRemoteRevisions[revisionId] = response.revisionId;
+                    this._addToLocalRemoteRevisions(revisionId,
+                                                    response.revisionId);
                     console.log('Succesfully removed remotely: ', affectedKey,
                                 response.revisionId);
                   },
@@ -631,7 +657,7 @@ CloudDatastore.prototype = {
                  encodeURIComponent('__all__') + '?token=' + self._token,
           {
              success: (response) => {
-              this._localRemoteRevisions[revisionId] = response.revisionId;
+              this._addToLocalRemoteRevisions(revisionId,  response.revisionId);
               console.log('Succesfully cleared remotely', response.revisionId);
           },
           error: function() {

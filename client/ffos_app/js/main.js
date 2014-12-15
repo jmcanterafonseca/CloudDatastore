@@ -415,8 +415,13 @@ var ListManager = (function() {
 
   function start(token) {
     init(token).then(function() {
+      // To be as responsive as possible
       renderList();
-      cloudDatastore.sync().then(() => console.log('Synced!!'));
+
+      cloudDatastore.sync().then(() => {
+        console.log('Synced!!')
+        renderList();
+      });
     }, () => alert('error'));
   }
 
