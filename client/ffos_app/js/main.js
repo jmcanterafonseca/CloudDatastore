@@ -46,9 +46,24 @@ var ListManager = (function() {
   document.querySelector('#attachment-remove-button').addEventListener('click',
                                                     removeAttachment);
 
+  document.querySelector('input[name="title"]').addEventListener('focus',
+                                                                      onFocus);
+
+  document.querySelector('textarea[name="text-data"]').addEventListener('focus',
+                                                                      onFocus);
+
   var noteAttachment, attachmentThumbnail;
 
   var cloudDatastore, datastore;
+
+  function onFocus(event) {
+    var selector = '.view-body [role="toolbar"]';
+    this.addEventListener('blur', function() {
+      document.querySelector(selector).style.display = 'flex';
+    });
+
+    document.querySelector(selector).style.display = 'none';
+  }
 
   function onReload() {
 
