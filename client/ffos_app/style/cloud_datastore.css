@@ -147,3 +147,16 @@ i[data-icon="attachment"] {
   padding-left: 1rem;
   font-style: italic;
 }
+
+.spinning::before {
+  animation: spinning 2s infinite linear;
+}
+
+@keyframes spinning {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(359deg);
+  }
+}

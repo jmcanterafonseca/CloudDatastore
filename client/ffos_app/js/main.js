@@ -55,11 +55,16 @@ var ListManager = (function() {
   }
 
   function syncData() {
+    document.getElementById('reload-button').classList.add('spinning');
     cloudDatastore.sync().then(() => {
-      alert('sync done');
+      showStatus('synced');
+      document.getElementById('reload-button').classList.remove('spinning');
       renderList();
       backToList(notesSettingsView);
-    }, () => alert('error'));
+    }, (err) => {
+      showStatus(err.name);
+      document.getElementById('reload-button').classList.remove('spinning');
+    });
   }
 
   function sync() {
@@ -74,7 +79,7 @@ var ListManager = (function() {
     }).then(() => {
         emptyNotesElement();
         backToList(notesSettingsView);
-    }, () => alert('error'));
+    }, () => showStatus('datastoreNotCleared'));
   }
 
   function onAttach() {
@@ -93,7 +98,7 @@ var ListManager = (function() {
       });
     }
 
-    activity.onerror = () => alert(activity.error.name);
+    activity.onerror = () => showStatus('activityError');
   }
 
   function removeAttachment() {
@@ -210,7 +215,7 @@ var ListManager = (function() {
 
   function onDeleteNote() {
     var noteId = Number(getFormData().id);
-    deleteNote(noteId).then(onNoteSaved, () => alert('error'));
+    deleteNote(noteId).then(onNoteSaved, () => showStatus('notDeleted'));
   }
 
   function onEditNote(e) {
@@ -231,7 +236,7 @@ var ListManager = (function() {
     cloudDatastore.get(uid).then(function(note) {
       note.id = uid;
       editNote(note);
-    }, () => alert('error'));
+    }, () => showStatus('cloudstore'));
   }
 
   function editNote(note) {
@@ -251,10 +256,10 @@ var ListManager = (function() {
 
   function onSaveNote() {
     if (notesFormView.dataset.mode === 'edit') {
-      updateNote().then(onNoteSaved, () => alert('error'));
+      updateNote().then(onNoteSaved, () => showStatus('notUpdated'));
       return;
     }
-    addNote().then(onNoteSaved, () => alert('error'));
+    addNote().then(onNoteSaved, () => showStatus('notSaved'));
   }
 
   function onNoteSaved() {
@@ -269,7 +274,9 @@ var ListManager = (function() {
   }
 
   function onClear() {
-    cloudDatastore.clear().then(emptyNotesElement, () => alert('error'));
+    cloudDatastore.clear().then(emptyNotesElement, () => {
+      showStatus('cloudstoreNotCleared')
+    });
     backToList(notesSettingsView);
   }
 
@@ -420,16 +427,50 @@ var ListManager = (function() {
     notesListView.classList.add('view-hidden');
   }
 
+  function showStatus(statusKey) {
+    var statuses = {
+      timeout: 'The request timed out.',
+      nothingNew: 'No changes since last revision!',
+      other: 'There was an error while doing the request.',
+      synced: 'Synced!',
+      cloudstore: 'There was an error trying to access the remote datastore.',
+      datastoreNotCleared: 'The local datastore could not have been cleared.',
+      cloudstoreNotCleared: 'The remote datastore could not have been cleared',
+      notDeleted: 'The note could not have been deleted.',
+      notUpdated: 'The note could not have been updated',
+      notSaved: 'The note could not been saved',
+      activityError: 'The activity failed.'
+    }
+
+    var section = document.createElement('section');
+    section.setAttribute('role', 'status');
+    var msg = document.createElement('p');
+    msg.textContent = statuses[statusKey];
+    section.appendChild(msg);
+    document.body.appendChild(section);
+
+    setTimeout(() => {
+      document.body.removeChild(section);
+    }, 2000);
+  }
+
   function start(token) {
     init(token).then(function() {
       // To be as responsive as possible
       renderList();
 
+      document.getElementById('reload-button').classList.add('spinning');
       cloudDatastore.sync().then(() => {
-        console.log('Synced!!')
+        document.getElementById('reload-button').classList.remove('spinning');
         renderList();
+      }, (err) => {
+        showStatus(err.name);
+        document.getElementById('reload-button').classList.remove('spinning');
       });
-    }, () => alert('error'));
+    }, (err) => {
+      showStatus(err.name);
+      document.getElementById('reload-button').classList.remove('spinning');
+    });
   }
 
   function init(token) {
@@ -444,7 +485,7 @@ var ListManager = (function() {
         datastore = list[0];
         cloudDatastore = new CloudDatastore(datastore, token);
         resolve();
-      }, reject);
+      }, reject({name: 'datastore'}));
     });
   }
 

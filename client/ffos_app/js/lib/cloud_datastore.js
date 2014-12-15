@@ -241,7 +241,7 @@ CloudDatastore.prototype = {
           'sync/from' + '?token=' + this._token + '&revisionId=' + revisionId, {
             success: (syncData) => {
               if (syncData.newRevisionId == revisionId) {
-                console.log('No changes since last revision!!!!');
+                reject({name: 'nothingNew'});
                 return;
               }
               var syncSuccess = () => {
@@ -252,8 +252,15 @@ CloudDatastore.prototype = {
               };
               this._doSync(syncData, syncSuccess, reject);
             },
-            error: () => console.error('Error syncing: '),
-            timeout: () => console.error('Timeout syncing: ')
+            error: (err) => {
+              console.error('Error syncing: ', err);
+              reject({name: 'other'});
+            },
+
+            timeout: () => {
+              console.error('Timeout syncing: ');
+              reject({name: 'timeout'});
+            }
           },
           {
             operationsTimeout: 10000
@@ -276,16 +283,14 @@ CloudDatastore.prototype = {
               this._doSync(syncData, syncSuccess, reject);
             },
 
-            error: function(err) {
+            error: (err) => {
               console.error('Error while calling the service');
-              reject(err);
+              reject({name: 'other'});
             },
 
-            timeout: function() {
+            timeout: () => {
               console.error('Timeout while calling the service');
-              reject({
-                name: 'timeout'
-              });
+              reject({name: 'timeout'});
             }
           },
           {
