@@ -101,9 +101,9 @@ CloudDatastore.prototype = {
     console.log('Original Revision Id: ', this._localDatastore.revisionId);
 
     return this._retrieveRevisionMetadata().then(() => {
-      return this._localDatastore.clear().then(() => {
-        return this._clearMetadata();
-      });
+      return this._clearMetadata();
+    }).then(() => {
+        return this._localDatastore.clear();
     });
   },
 

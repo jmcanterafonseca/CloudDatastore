@@ -62,6 +62,12 @@ var ListManager = (function() {
     }, () => alert('error'));
   }
 
+  function sync() {
+    cloudDatastore.sync().then(() => {
+      renderList();
+    });
+  }
+
   function localClear() {
     cloudDatastore.clear({
       onlyLocal: true
@@ -235,7 +241,7 @@ var ListManager = (function() {
 
     var formData = document.querySelector('form').elements;
     formData['title'].value = note.title;
-    formData['text-data'].value = note.body;
+    formData['text-data'].value = note.body || '';
     formData['noteId'].value = note.id;
 
     noteAttachment = note.attachment;
@@ -349,7 +355,8 @@ var ListManager = (function() {
     }
 
     li.innerHTML += '<a href="#"><p>' + '<strong>' + aNote.title + '</strong>' +
-                    '</p>' + '<p class="note-body">' + aNote.body +  '</p></a>';
+                    '</p>' + '<p class="note-body">' + (aNote.body || '') +
+                    '</p></a>';
 
     li.dataset.uid = aNote.id;
     return li;
@@ -442,7 +449,8 @@ var ListManager = (function() {
   }
 
   return {
-    'start': start
+    'start': start,
+    'sync': sync
   }
 
 })();
