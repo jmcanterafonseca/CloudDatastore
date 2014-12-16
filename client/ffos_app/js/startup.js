@@ -1,11 +1,6 @@
 'use strict';
 
-alert('here');
-
-function login(refresh) {
-  if (typeof refresh === 'undefined') {
-    refresh = true;
-  }
+function login() {
   window.asyncStorage.getItem('mobileIdData', function(data) {
     if (!data) {
       navigator.getMobileIdAssertion({
@@ -14,7 +9,7 @@ function login(refresh) {
 
       return;
     }
-    ListManager.start(data.token, refresh);
+    ListManager.start(data.token);
   });
 }
 
@@ -48,7 +43,7 @@ function onRegistered(response) {
   document.querySelector('#logged-as').textContent = response &&
                                                             response.msisdn;
 
-  ListManager.start(response.token, true);
+  ListManager.start(response.token);
 }
 
 

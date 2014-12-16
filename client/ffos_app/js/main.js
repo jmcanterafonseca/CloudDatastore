@@ -370,7 +370,7 @@ var ListManager = (function() {
         return clearAsyncStorage();
       }).then(() => {
         emptyNotesElement();
-        window.logout(authToken).then(window.login.bind(null, false));
+        window.logout(authToken).then(window.login);
       });
     }
   }
@@ -505,11 +505,11 @@ var ListManager = (function() {
     notesListView.classList.add('view-hidden');
   }
 
-  function start(token, refresh) {
+  function start(token) {
     init(token).then(function() {
       // To be as responsive as possible
       renderList();
-      if (refresh && navigator.onLine === true) {
+      if (navigator.onLine === true) {
         showSyncProgress();
         cloudDatastore.sync().then((changes) => {
           hideSyncProgress();

@@ -189,7 +189,7 @@ CloudDatastore.prototype = {
     var remoteRevision;
     while (!remoteRevision && localRevId) {
       remoteRevision = this._localRemoteRevisions[localRevId];
-      localRevId = this._localRemoteRevisions[localRevId];
+      localRevId = this._revisionGraph[localRevId];
     }
 
     if (!localRevId && !remoteRevision) {
@@ -209,7 +209,8 @@ CloudDatastore.prototype = {
   },
 
   _clearBlobData: function() {
-    this._objectBlob = null;
+    // TODO: We keep the blob map as it was
+    // this._objectBlob = null;
     return this._saveBlobData();
   },
 
@@ -362,6 +363,8 @@ CloudDatastore.prototype = {
                                   this._localDatastore.name, mediaList);
         mediaSync.start();
 
+        var hashOperations = [];
+
         mediaSync.onmediaready = (id, blob) => {
           if (!blob) {
             console.warn('No blob could be retrieved for: ', id);
@@ -371,6 +374,8 @@ CloudDatastore.prototype = {
           // database
           var objectId = mediaInfo[id].objId;
           var objectProperty = mediaInfo[id].objProp;
+
+          // The blob data map has to be updated (TODO)
 
           var object = objectData[objectId];
           object[objectProperty] = blob;
