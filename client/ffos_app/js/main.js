@@ -8,6 +8,7 @@ var ListManager = (function() {
   var notesFormView = document.querySelector('#notes-form-view');
   var notesSettingsView = document.querySelector('#notes-settings-view');
   var notesAttachmentView = document.querySelector('#notes-attachment-view');
+  var attachmentProgress = document.querySelector('.view-attachment .progress');
 
 
   var notesListElement = document.querySelector('#notes-list');
@@ -228,6 +229,8 @@ var ListManager = (function() {
     notesAttachmentView.classList.add('view-visible');
     notesListView.classList.remove('view-visible');
     notesListView.classList.add('view-hidden');
+    attachmentProgress.classList.remove('view-hidden');
+    attachmentProgress.classList.add('view-visible');
 
     renderAttachment();
   }
@@ -242,6 +245,8 @@ var ListManager = (function() {
     imgNode.onload = function() {
       setImageDimensions(imgNode);
       attachmentContainer.appendChild(imgNode);
+      attachmentProgress.classList.remove('view-visible');
+      attachmentProgress.classList.add('view-hidden');
     };
   }
 

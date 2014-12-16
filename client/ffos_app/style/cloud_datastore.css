@@ -189,3 +189,7 @@ div[role="toolbar"] button[disabled="disabled"] {
   color: #c7c7c7;
   pointer-events: none;
 }
+
+.progress {
+  text-align: center;
+}
