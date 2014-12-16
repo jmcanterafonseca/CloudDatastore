@@ -13,7 +13,8 @@
     "mobileid": {
       "description": "Allows to obtain user's mobile phone number"
     },
-    "idle":{}
+    "desktop-notification": {},
+    "push": {}
   },
 
   "orientation": "default",
@@ -31,6 +32,12 @@
       "description": "Datastore Demoed"
     }
   },
+
+  "messages": [
+    { "push": "/index.html"},
+    { "push-register": "/index.html"},
+    { "notification": "/index.html" }
+  ],
 
   "default_locale": "en-US",
   "icons": {

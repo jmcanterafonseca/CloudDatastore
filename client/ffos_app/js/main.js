@@ -2,6 +2,8 @@
 
 var ListManager = (function() {
 
+  var authToken;
+
   var notesListView = document.querySelector('#notes-list-view');
   var notesFormView = document.querySelector('#notes-form-view');
   var notesSettingsView = document.querySelector('#notes-settings-view');
@@ -54,16 +56,52 @@ var ListManager = (function() {
 
   }
 
+  function showSyncProgress() {
+    document.querySelector('#reload-button').classList.add('spinning');
+    document.querySelector('#sync-data-button').disabled = true;
+  }
+
+  function hideSyncProgress() {
+    document.querySelector('#reload-button').classList.remove('spinning');
+    document.querySelector('#sync-data-button').disabled = false;
+  }
+
+  function showStatus(msg) {
+    var section = document.createElement('section');
+    section.setAttribute('role', 'status');
+
+    var msgContent = document.createElement('p');
+    msgContent.textContent = msg;
+    section.appendChild(msgContent);
+    document.body.appendChild(section);
+
+    setTimeout(() => {
+      document.body.removeChild(section);
+    }, 2000);
+  }
+
   function syncData() {
-    cloudDatastore.sync().then(() => {
-      alert('sync done');
-      renderList();
+    showSyncProgress();
+    cloudDatastore.sync().then((result) => {
+      hideSyncProgress();
+      if (result === null) {
+        showStatus('No changes were found');
+      }
+      else {
+        renderList();
+        showStatus('Sync completed successfully');
+      }
       backToList(notesSettingsView);
     }, () => alert('error'));
   }
 
   function sync() {
-    cloudDatastore.sync().then(() => {
+    showSyncProgress();
+    cloudDatastore.sync().then((changes) => {
+      hideSyncProgress();
+      if (changes !== null) {
+        showStatus('Sync completed successfully');
+      }
       renderList();
     });
   }
@@ -210,7 +248,14 @@ var ListManager = (function() {
 
   function onDeleteNote() {
     var noteId = Number(getFormData().id);
-    deleteNote(noteId).then(onNoteSaved, () => alert('error'));
+    ConfirmDialog.show(null, "Delete note?",
+      {title: "Cancel", isDanger: false, callback: ConfirmDialog.hide},
+      {title: "Delete", isDanger: true, callback: doDeleteNote});
+
+    function doDeleteNote() {
+      ConfirmDialog.hide();
+      deleteNote(noteId).then(onNoteSaved, () => alert('error'));
+    }
   }
 
   function onEditNote(e) {
@@ -269,8 +314,15 @@ var ListManager = (function() {
   }
 
   function onClear() {
-    cloudDatastore.clear().then(emptyNotesElement, () => alert('error'));
-    backToList(notesSettingsView);
+    ConfirmDialog.show(null, 'Clear all notes?',
+      {title: "Cancel", isDanger: false, callback: ConfirmDialog.hide},
+      {title: "Clear", isDanger: true, callback: doClear});
+
+    function doClear() {
+      ConfirmDialog.hide();
+      cloudDatastore.clear().then(emptyNotesElement, () => alert('error'));
+      backToList(notesSettingsView);
+    }
   }
 
   function clearAsyncStorage() {
@@ -280,16 +332,24 @@ var ListManager = (function() {
   }
 
   function onLogout() {
-    return cloudDatastore.clear({
-      onlyLocal: true
-    }).then(() => {
-      return clearMobileId();
-    }).then(function() {
-      return clearAsyncStorage();
-    }).then(() => {
-      emptyNotesElement();
-      window.login();
-    });
+    ConfirmDialog.show(null, 'Logout from the server?',
+      {title: 'Cancel', isDanger: false, callback: ConfirmDialog.hide},
+      {title: 'Logout', isDanger: true, callback: doLogout});
+
+    function doLogout() {
+      ConfirmDialog.hide();
+
+      return cloudDatastore.clear({
+        onlyLocal: true
+      }).then(() => {
+        return clearMobileId();
+      }).then(function() {
+        return clearAsyncStorage();
+      }).then(() => {
+        emptyNotesElement();
+        window.logout(authToken).then(window.login.bind(null, false));
+      });
+    }
   }
 
   function addNote() {
@@ -420,19 +480,25 @@ var ListManager = (function() {
     notesListView.classList.add('view-hidden');
   }
 
-  function start(token) {
+  function start(token, refresh) {
     init(token).then(function() {
       // To be as responsive as possible
       renderList();
-
-      cloudDatastore.sync().then(() => {
-        console.log('Synced!!')
-        renderList();
-      });
+      if (refresh && navigator.onLine === true) {
+        showSyncProgress();
+        cloudDatastore.sync().then((changes) => {
+          hideSyncProgress();
+          if (changes !== null) {
+            renderList();
+          }
+        });
+      }
     }, () => alert('error'));
   }
 
   function init(token) {
+    authToken = token;
+
     if (cloudDatastore) {
       cloudDatastore.setToken(token);
       return Promise.resolve();

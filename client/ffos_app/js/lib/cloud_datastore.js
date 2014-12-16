@@ -100,6 +100,14 @@ CloudDatastore.prototype = {
     var originalRevisionId = this._localDatastore.revisionId;
     console.log('Original Revision Id: ', this._localDatastore.revisionId);
 
+    var datastoreSequence = function(revisionId, isLocal, e) {
+      this._localDatastore.removeEventListener('change', datastoreSequence);
+      if (e.operation !== 'clear' || isLocal) {
+        return;
+      }
+      this._addToRevisionGraph(revisionId, e.revisionId);
+    }.bind(this, originalRevisionId, this._isLocalOperation);
+
     return this._retrieveRevisionMetadata().then(() => {
       return this._clearMetadata();
     }).then(() => {
@@ -171,7 +179,7 @@ CloudDatastore.prototype = {
   _addToRevisionGraph: function(oldRev, newRev) {
     return this._retrieveRevisionGraph(true).then(() => {
       this._revisionGraph = this._revisionGraph || Object.create(null);
-      this._revisionGraph[oldRev] = newRev;
+      this._revisionGraph[newRev] = oldRev;
       return this._saveRevisionGraph();
     });
   },
@@ -195,7 +203,6 @@ CloudDatastore.prototype = {
     var operations = [];
     operations.push(this._clearIds());
     operations.push(this._clearBlobData());
-    operations.push(this._clearPendingOperations());
     operations.push(this._clearRevisionMetadata());
 
     return Promise.all(operations);
@@ -204,10 +211,6 @@ CloudDatastore.prototype = {
   _clearBlobData: function() {
     this._objectBlob = null;
     return this._saveBlobData();
-  },
-
-  _clearPendingOperations: function() {
-    return this._savePendingOperations(null);
   },
 
   _clearRevisionMetadata: function() {
@@ -242,6 +245,7 @@ CloudDatastore.prototype = {
             success: (syncData) => {
               if (syncData.newRevisionId == revisionId) {
                 console.log('No changes since last revision!!!!');
+                resolve(null);
                 return;
               }
               var syncSuccess = () => {
@@ -505,44 +509,61 @@ CloudDatastore.prototype = {
     });
   },
 
+  _getLastSyncedLocalRev: function(lastLocalRev) {
+    var out;
+    var currentLocalRev = lastLocalRev;
+    var remoteRev;
+
+    while(!remoteRev && currentLocalRev) {
+      currentLocalRev = this._revisionGraph[currentLocalRev];
+      remoteRev = this._localRemoteRevisions[currentLocalRev];
+    }
+
+    if (remoteRev && currentLocalRev) {
+      out = currentLocalRev;
+    }
+
+    return out;
+  },
+
   handleOnline: function(e) {
     console.log('Online changed ...', navigator.onLine);
     if (navigator.onLine === true) {
       // If there are pending operations to be executed against the server
       // We execute them
-      this._getPendingOperations().then((pendingOperations) => {
-        console.log('Pending operations: ', pendingOperations);
-        if (!pendingOperations) {
-          return;
+      var currentLocalRevId = this._localDatastore.revisionId;
+      this._retrieveRevisionMetadata().then(() => {
+        console.log(JSON.stringify(this._localRemoteRevisions));
+        console.log(JSON.stringify(this._revisionGraph));
+
+        var remoteRevId = this._localRemoteRevisions[currentLocalRevId];
+        if (!remoteRevId) {
+          var lastSyncedRevision = this._getLastSyncedLocalRev(
+                                                            currentLocalRevId);
+
+          alert('Last synced revision: ' + lastSyncedRevision);
+          var cursor = this._localDatastore.sync(lastSyncedRevision);
+
+          var changeHandler = (task) => {
+            if (task.operation === 'done') {
+              return;
+            }
+
+            console.log('Found a task to handle: ', task.operation);
+            task.type = 'change';
+            this.handleEvent({
+              type: 'change',
+              revisionId: task.revisionId,
+              operation: task.operation,
+              id: task.id
+            });
+
+            cursor.next().then(changeHandler);
+          };
+          cursor.next().then(changeHandler);
         }
-        console.log('Going to execute pending operations ...',
-                    pendingOperations);
-        pendingOperations.forEach((aOperation) => {
-          aOperation.type = 'change';
-          this.handleEvent(aOperation);
-        });
       });
     }
-  },
-
-  _addPendingOperation: function(operation) {
-    return this._getPendingOperations().then((operations) => {
-      var ops = operations || [];
-      ops.push(operation);
-      return this._savePendingOperations(ops);
-    });
-  },
-
-  _savePendingOperations: function(list) {
-    return new Promise(function(resolve, reject) {
-      window.asyncStorage.setItem('pendingOperations', list, resolve, reject);
-    });
-  },
-
-  _getPendingOperations: function() {
-    return new Promise(function(resolve, reject) {
-      window.asyncStorage.getItem('pendingOperations', resolve, reject);
-    });
   },
 
   handleEvent: function(e) {
@@ -567,22 +588,16 @@ CloudDatastore.prototype = {
     var affectedKey = e.id;
     var operation = e.operation;
     var revisionId = e.revisionId;
-    console.log('Revision Id: ', revisionId, operation);
 
     if (navigator.onLine === false) {
-      console.log('Navigator is not online ... saving pending OP');
-
-      this._addPendingOperation({
-        id: affectedKey,
-        operation: operation
-      });
-
+      console.log('Navigator is not online ... nothing can be done');
       return;
     }
 
     // And now execute the operation against the cloud
     switch (operation) {
       case 'added':
+      case 'add':
         this._localDatastore.get(affectedKey).then((obj) => {
           return this._getData(obj, affectedKey);
         }).then((adaptedObj) => {
@@ -591,7 +606,8 @@ CloudDatastore.prototype = {
                   method: 'PUT'
                 },{
              success: (response) => {
-              this._addToLocalRemoteRevisions(revisionId,  response.revisionId);
+              var revId = revisionId || this._localDatastore.revisionId;
+              this._addToLocalRemoteRevisions(revId,  response.revisionId);
               console.log('Succesfully added to the service: ', affectedKey,
                           response.revisionId);
             },
@@ -606,6 +622,8 @@ CloudDatastore.prototype = {
       break;
 
       case 'updated':
+      case 'put':
+      case 'update':
         this._localDatastore.get(affectedKey).then((obj) => {
           return this._getData(obj, affectedKey);
         }).then((adaptedObj) => {
@@ -629,6 +647,7 @@ CloudDatastore.prototype = {
       break;
 
       case 'removed':
+      case 'remove':
         console.log('REMOVED!!!!');
         RestPost(SERVICE_URL + '/' + self._localDatastore.name
                    + '/' + affectedKey + '?token=' + self._token, null, {
@@ -651,6 +670,7 @@ CloudDatastore.prototype = {
       break;
 
       case 'cleared':
+      case 'clear':
         this._objectBlob = null;
         this._saveBlobData();
         Rest.get(SERVICE_URL + '/' + self._localDatastore.name + '/' +

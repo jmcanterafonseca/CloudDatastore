@@ -54,7 +54,7 @@ label {
   font-size: larger;
 }
 
-form {
+form#note-data-form {
   margin-left: 2rem;
   margin-right: 2rem;
   margin-top: 2rem;
@@ -73,7 +73,7 @@ textarea[name="text-data"] {
   visibility: hidden;
 }
 
-.hidden {
+.hidden, .hide {
   display: none;
 }
 
@@ -146,4 +146,35 @@ i[data-icon="attachment"] {
 .note-body {
   padding-left: 1rem;
   font-style: italic;
+}
+
+.spinning::before {
+  animation: spinning 2s infinite linear;
+}
+
+@keyframes spinning {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(359deg);
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.2s forwards;
+}
+
+.fade-out {
+  animation: fade-out 0.2s forwards;
+}
+
+@keyframes fade-in {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes fade-out {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
 }

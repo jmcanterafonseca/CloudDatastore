@@ -1,6 +1,9 @@
 'use strict';
 
-function login() {
+function login(refresh) {
+  if (typeof refresh === 'undefined') {
+    refresh = true;
+  }
   window.asyncStorage.getItem('mobileIdData', function(data) {
     if (!data) {
       navigator.getMobileIdAssertion({
@@ -9,7 +12,7 @@ function login() {
 
       return;
     }
-    ListManager.start(data.token);
+    ListManager.start(data.token, refresh);
   });
 }
 
@@ -65,8 +68,22 @@ function getPushEndPoint() {
         }
       }
       else {
-        resolve(data);
+        resolve();
       }
+    });
+  });
+}
+
+function logout(token) {
+  return new Promise(function(resolve, reject) {
+    var unRegisterUrl = 'http://81.45.21.204/ds/unregister';
+    Rest.get(unRegisterUrl + '?token=' + token,
+    {
+      success: resolve,
+      error: () => alert('Error unregistering!!!'),
+      timeout: () => console.error('Timeout!!!')
+    }, {
+        operationsTimeout: 10000
     });
   });
 }
