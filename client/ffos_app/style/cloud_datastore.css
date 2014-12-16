@@ -50,15 +50,15 @@ html, body {
   height: calc(100% - 4rem);
 }
 
-label {
+.view-body label {
   font-size: larger;
 }
 
-form {
+.view-body form {
   margin-left: 2rem;
   margin-right: 2rem;
   margin-top: 2rem;
-  margin-botton: 0rem;
+  margin-bottom: 0rem;
 }
 
 textarea[name="text-data"] {
@@ -71,10 +71,6 @@ textarea[name="text-data"] {
 
 #notes-form-view[data-mode="add"] button#delete-button {
   visibility: hidden;
-}
-
-.hidden {
-  display: none;
 }
 
 section.notes {
@@ -146,4 +142,26 @@ i[data-icon="attachment"] {
 .note-body {
   padding-left: 1rem;
   font-style: italic;
+}
+
+.hide, .hidden {
+    display: none !important;
+}
+
+.fade-in {
+  animation: fade-in 0.2s forwards;
+}
+
+.fade-out {
+  animation: fade-out 0.2s forwards;
+}
+
+@keyframes fade-in {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes fade-out {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
 }

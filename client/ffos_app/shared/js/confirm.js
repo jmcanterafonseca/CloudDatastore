@@ -68,17 +68,6 @@ var ConfirmDialog = (function() {
     * @param  {Object} action2 {title, isDanger, callback} object.
     */
   var _show = function _show(title, msg, action1, action2, options) {
-
-    var setL10nAttributes = function (element, options){
-      if ('string' === typeof options) {
-        navigator.mozL10n.setAttributes(element, options);
-      }
-
-      if(options.id) {
-        navigator.mozL10n.setAttributes(element, options.id, options.args);
-      }
-    };
-
     if (options && options.zIndex) {
       oldzIndex = screen.style.zIndex;
       screen.style.zIndex = options.zIndex;
@@ -87,18 +76,18 @@ var ConfirmDialog = (function() {
       oldzIndex = null;
     }
     if (title) {
-      setL10nAttributes(titleNode, title);
+      titleNode.textContent = title;
     } else {
       titleNode.classList.add('hide');
     }
     if (msg) {
-      setL10nAttributes(messageNode, msg);
+      messageNode.textContent = msg;
     } else {
       messageNode.classList.add('hide');
     }
     if (action1) {
       if (action1.title) {
-        setL10nAttributes(action1Node, action1.title);
+        action1Node.textContent = action1.title;
       }
       if (action1.isDanger) {
         action1Node.classList.add('danger');
@@ -117,7 +106,7 @@ var ConfirmDialog = (function() {
     }
     if (action2) {
       if (action2.title) {
-        setL10nAttributes(action2Node, action2.title);
+        action2Node.textContent = action2.title;
       }
       if (action2.isDanger) {
         action2Node.classList.add('danger');
