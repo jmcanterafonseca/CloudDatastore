@@ -147,3 +147,8 @@ i[data-icon="attachment"] {
   padding-left: 1rem;
   font-style: italic;
 }
+
+#save-button[disabled="disabled"] {
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.3);
+}
