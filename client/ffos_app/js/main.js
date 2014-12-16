@@ -210,7 +210,14 @@ var ListManager = (function() {
 
   function onDeleteNote() {
     var noteId = Number(getFormData().id);
-    deleteNote(noteId).then(onNoteSaved, () => alert('error'));
+    ConfirmDialog.show(null, "Delete note?",
+      {title: "Cancel", isDanger: false, callback: ConfirmDialog.hide},
+      {title: "Delete", isDanger: true, callback: doDeleteNote});
+
+    function doDeleteNote() {
+      ConfirmDialog.hide();
+      deleteNote(noteId).then(onNoteSaved, () => alert('error'));
+    }
   }
 
   function onEditNote(e) {
