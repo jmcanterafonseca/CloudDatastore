@@ -46,6 +46,17 @@ var ListManager = (function() {
   document.querySelector('#attachment-remove-button').addEventListener('click',
                                                     removeAttachment);
 
+  var titleInput = document.querySelector('.view-body form input[type="text"]');
+  var textInput = document.querySelector('.view-body form textarea');
+
+  document.querySelector('.view-body form').addEventListener('input', () => {
+    if (titleInput.value.length === 0 && textInput.value.length === 0) {
+      document.getElementById('save-button').disabled = true;
+    } else {
+      document.getElementById('save-button').disabled = false;
+    }
+  });
+
   var noteAttachment, attachmentThumbnail;
 
   var cloudDatastore, datastore;
@@ -385,6 +396,7 @@ var ListManager = (function() {
     notesFormView.classList.add('view-visible');
     notesListView.classList.remove('view-visible');
     notesListView.classList.add('view-hidden');
+    document.getElementById('save-button').disabled = true;
   }
 
   function backToList(originalView) {
