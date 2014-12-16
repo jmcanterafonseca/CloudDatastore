@@ -48,22 +48,36 @@ var ListManager = (function() {
   document.querySelector('#attachment-remove-button').addEventListener('click',
                                                     removeAttachment);
 
+  var titleInput = document.querySelector('input[name="title"]');
+  var textInput = document.querySelector('textarea[name="text-data"]');
+
+  document.querySelector('#note-data-form').addEventListener('input', () => {
+    var title = titleInput.value.trim();
+    var body = textInput.value.trim();
+    if (title.length === 0 && body.length === 0) {
+      document.getElementById('save-button').disabled = true;
+    } else {
+      document.getElementById('save-button').disabled = false;
+    }
+  });
+
   var noteAttachment, attachmentThumbnail;
 
   var cloudDatastore, datastore;
 
   function onReload() {
-
+    localClear();
   }
 
   function showSyncProgress() {
     document.querySelector('#reload-button').classList.add('spinning');
-    document.querySelector('#sync-data-button').disabled = true;
+    document.querySelector('#sync-data-button').setAttribute(
+                                                        'disabled', 'disabled');
   }
 
   function hideSyncProgress() {
     document.querySelector('#reload-button').classList.remove('spinning');
-    document.querySelector('#sync-data-button').disabled = false;
+    document.querySelector('#sync-data-button').removeAttribute('disabled');
   }
 
   function showStatus(msg) {
@@ -95,9 +109,9 @@ var ListManager = (function() {
     }, () => alert('error'));
   }
 
-  function sync() {
+  function sync(newVersion) {
     showSyncProgress();
-    cloudDatastore.sync().then((changes) => {
+    cloudDatastore.sync(newVersion).then((changes) => {
       hideSyncProgress();
       if (changes !== null) {
         showStatus('Sync completed successfully');
@@ -112,6 +126,11 @@ var ListManager = (function() {
     }).then(() => {
         emptyNotesElement();
         backToList(notesSettingsView);
+        showSyncProgress();
+        cloudDatastore.sync().then(() => {
+          hideSyncProgress();
+          renderList();
+        })
     }, () => alert('error'));
   }
 
@@ -125,6 +144,9 @@ var ListManager = (function() {
 
     activity.onsuccess = function() {
       noteAttachment = activity.result.blob;
+
+      document.querySelector('#save-button').disabled = false;
+
       createThumbnail(noteAttachment, function(thumbnail) {
         attachmentThumbnail = thumbnail;
         buildAttachment(thumbnail);
@@ -136,6 +158,7 @@ var ListManager = (function() {
 
   function removeAttachment() {
     resetAttachment();
+    document.querySelector('#save-button').disabled = false;
     backToDetail();
   }
 
@@ -414,9 +437,9 @@ var ListManager = (function() {
                      '</aside>';
     }
 
-    li.innerHTML += '<a href="#"><p>' + '<strong>' + aNote.title + '</strong>' +
-                    '</p>' + '<p class="note-body">' + (aNote.body || '') +
-                    '</p></a>';
+    li.innerHTML += '<a href="#"><p>' + '<strong>' + (aNote.title || '')
+                      + '</strong>' + '</p>' + '<p class="note-body">' +
+                      (aNote.body || '') + '</p></a>';
 
     li.dataset.uid = aNote.id;
     return li;
@@ -445,6 +468,8 @@ var ListManager = (function() {
     notesFormView.classList.add('view-visible');
     notesListView.classList.remove('view-visible');
     notesListView.classList.add('view-hidden');
+
+    document.getElementById('save-button').disabled = true;
   }
 
   function backToList(originalView) {

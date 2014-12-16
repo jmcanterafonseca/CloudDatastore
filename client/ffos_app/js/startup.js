@@ -1,5 +1,7 @@
 'use strict';
 
+alert('here');
+
 function login(refresh) {
   if (typeof refresh === 'undefined') {
     refresh = true;
@@ -46,7 +48,7 @@ function onRegistered(response) {
   document.querySelector('#logged-as').textContent = response &&
                                                             response.msisdn;
 
-  ListManager.start(response.token);
+  ListManager.start(response.token, true);
 }
 
 
@@ -90,20 +92,15 @@ function logout(token) {
 
 function handlePush(e) {
   console.log('Push message received. Version: ', e.version);
-  /*
-   var notif = new Notification('Cloud Gallery', {
-    body: 'Gallery has changed'
-  });
 
-  if (state === 'running') {
-    togglePick();
-    Gallery.newVersion(e.version);
-  }
-  else {
-    window.close();
-  }
-*/
-  ListManager.sync();
+  /*
+  var notif = new Notification('Cloud Notes', {
+    body: 'Your notes have changed'
+  });
+  */
+  navigator.vibrate(600);
+
+  ListManager.sync(Number(e.version));
 }
 
 login();

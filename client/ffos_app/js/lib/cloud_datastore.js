@@ -232,14 +232,16 @@ CloudDatastore.prototype = {
   },
 
   // For the moment we only support full sync
-  sync: function() {
+  sync: function(pnewRev) {
+    var newRev = typeof pnewRev === 'undefined' ? Number.MAX_VALUE : pnewRev;
+
     return new Promise((resolve, reject) => {
       this._retrieveRevisionMetadata().then(() => {
         var revisionId = this.revisionId;
 
         console.log('Current Remote Revision Id: ', revisionId);
 
-        if (revisionId !== 0) {
+        if (revisionId !== 0 && revisionId < newRev) {
           Rest.get(SERVICE_URL + '/' + this._localDatastore.name + '/' +
           'sync/from' + '?token=' + this._token + '&revisionId=' + revisionId, {
             success: (syncData) => {
@@ -251,8 +253,8 @@ CloudDatastore.prototype = {
               var syncSuccess = () => {
                 var newLocalRevId = this._localDatastore.revisionId;
                 this._addToLocalRemoteRevisions(newLocalRevId,
-                                                    syncData.newRevisionId);
-                resolve();
+                                                    syncData.newRevisionId).
+                    then(resolve, reject);
               };
               this._doSync(syncData, syncSuccess, reject);
             },
@@ -264,8 +266,7 @@ CloudDatastore.prototype = {
           });
           return;
         }
-
-        if (revisionId === 0) {
+        else if (revisionId === 0) {
           Rest.get(SERVICE_URL + '/' + this._localDatastore.name + '/' +
           'sync/get_all' + '?token=' + this._token, {
             success: (syncData) => {
@@ -274,8 +275,8 @@ CloudDatastore.prototype = {
               var syncSuccess = () => {
                 var newLocalRevId = this._localDatastore.revisionId;
                 this._addToLocalRemoteRevisions(newLocalRevId,
-                                                    syncData.newRevisionId);
-                resolve();
+                                                    syncData.newRevisionId).
+                    then(resolve, reject);
               };
               this._doSync(syncData, syncSuccess, reject);
             },
@@ -295,6 +296,11 @@ CloudDatastore.prototype = {
           {
             operationsTimeout: 10000
           });
+        }
+        else {
+          console.log('New version provided is already known');
+          resolve(null);
+          return;
         }
       });
     });
@@ -330,7 +336,9 @@ CloudDatastore.prototype = {
 
       var removeOperations = [];
       for(var j = 0; j < removedData.length; j++) {
-        removeOperations.push(this.remove(Number(removedData[j])));
+        removeOperations.push(this.remove(Number(removedData[j]), {
+          onlyLocal: true
+        }));
       }
 
       Promise.all(removeOperations).then(() => {
