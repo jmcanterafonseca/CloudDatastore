@@ -2,6 +2,7 @@
 
 var URL = require('url');
 var QueryString = require('querystring');
+var Request = require('request');
 
 var redis = require('redis'),
     client = redis.createClient();
@@ -11,7 +12,13 @@ var TOKENS_HASH = 'tokensHash';
 // Stores those media which have been already stored
 var MEDIA_HASH = 'mediaHash';
 
+var PUSH_HASH = 'pushHash';
+
 var TOKEN_LENGTH = 10;
+
+function removeToken(token, cb) {
+  client.hdel(TOKENS_HASH, token, cb);
+}
 
 function addMediaStored(mediaId, cb) {
   client.hset(MEDIA_HASH, mediaId, '1', cb);
@@ -49,6 +56,7 @@ function getParams(req) {
     token: queryParams.token,
     datastoreName: params.dsname,
     id: params.id,
+    revisionId: queryParams.revisionId,
     req: req
   }
 }
@@ -81,6 +89,121 @@ function getObjectFromRequest(req) {
   return out;
 }
 
+function addPushEndPoint(msisdn, token, endPoint, cb) {
+  if (!endPoint) {
+    cb(null, 'done');
+    return;
+  }
+  client.hget(PUSH_HASH, msisdn, function(err, result) {
+    if (err) {
+      cb(err);
+      return;
+    }
+
+    var list;
+
+    if (!result) {
+      list = [];
+    }
+    else {
+      list = JSON.parse(result);
+    }
+
+    list.push({
+      token: token,
+      endPoint: endPoint
+    });
+
+    client.hset(PUSH_HASH, msisdn, JSON.stringify(list), cb);
+  });
+}
+
+function removePushEndPoint(msisdn, token, cb) {
+  client.hget(PUSH_HASH, msisdn, function(err, result) {
+    if (err) {
+      cb(err);
+      return;
+    }
+
+    var list;
+
+    if (!result) {
+      list = [];
+    }
+    else {
+      list = JSON.parse(result);
+    }
+
+    var newList = list.filter(function(aObj) {
+      return aObj.token !== token;
+    });
+
+    client.hset(PUSH_HASH, msisdn, JSON.stringify(newList), cb);
+  });
+}
+
+function getPushEndPoints(msisdn, token, cb) {
+  client.hget(PUSH_HASH, msisdn, function(err, result) {
+    if (err) {
+      cb(err);
+      return;
+    }
+
+    var list;
+
+    if (!result) {
+      list = [];
+    }
+    else {
+      list = JSON.parse(result);
+    }
+
+    var endPointList = list.filter(function(obj) {
+      return obj.token !== token;
+    }).map(function(filteredObj) {
+        return filteredObj.endPoint;
+    });
+
+    cb(null, endPointList);
+  });
+}
+
+function notifyChanges(clientId, token, newVersion, cb) {
+  getPushEndPoints(clientId, token, function(err, endPointList) {
+    if (err) {
+      cb(err);
+      return;
+    }
+    endPointList.forEach(function(aEndPoint) {
+      if (!aEndPoint) {
+        return;
+      }
+
+      console.log('End point to notify changes: ', aEndPoint);
+      Request.put({
+        url: aEndPoint,
+        body: 'version=' + newVersion,
+        strictSSL: false
+      }, function(err, response, body) {
+        if (err) {
+          cb(err);
+          return;
+        }
+        console.log('Body response: ', body);
+        var res = JSON.parse(body);
+        if (!res.reason) {
+          console.log('Push notification sent correctly');
+          cb(null, 'ok');
+        }
+        else {
+          console.error('Error while push notification: ', res);
+          cb(err);
+        }
+      });
+    });
+  });
+}
+
 function token2Msisdn(token, cb) {
   client.hget(TOKENS_HASH, token, function(error, msisdn) {
     if (error) {
@@ -94,20 +217,20 @@ function token2Msisdn(token, cb) {
 function getHashName(params, cb) {
   token2Msisdn(params.token, function(err, msisdn) {
     if (err || !msisdn) {
-      cb(err || 'not found', null);
+      cb(err || 'not found');
       return;
     }
     cb(null, msisdn + '_' + params.datastoreName, msisdn);
   });
 }
 
-var REVISIONID_KEY = 'revisionId';
-function getRevisionHashName(params) {
-  return getHashName(params) + '_' + 'revisions';
+// The hash that stores the changes made for each revision
+function getRevisionsHashName(clientId, dsName) {
+  return clientId + '_' + dsName + '_' + 'revisions';
 }
 
-function getRevisionIdKey(token, dsName) {
-  return REVISIONID_KEY + '_' + token + '_' + dsName;
+function getRevisionIdKey(clientId, dsName) {
+  return clientId + '_' + dsName;
 }
 
 function getBlobId(url) {
@@ -125,3 +248,10 @@ exports.token2Msisdn = token2Msisdn;
 exports.addMediaStored = addMediaStored;
 exports.isMediaStored = isMediaStored;
 exports.deleteMediaStored = deleteMediaStored;
+exports.getRevisionsHashName = getRevisionsHashName;
+exports.getRevisionIdKey = getRevisionIdKey;
+exports.addPushEndPoint = addPushEndPoint;
+exports.getPushEndPoints = getPushEndPoints;
+exports.notifyChanges = notifyChanges;
+exports.removeToken = removeToken;
+exports.removePushEndPoint = removePushEndPoint;

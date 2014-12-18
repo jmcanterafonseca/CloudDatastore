@@ -7,46 +7,32 @@ var redis = require('redis'),
 
 var Storage = require('./storage');
 
+var REVISIONS_HASH = 'revisions';
+
 // Returns the current revision Id for the remote data
-function getRevisionId(token, dsName, cb) {
-  var params = {
-    token: token,
-    datastoreName: dsName
-  };
-  var revisionKeyName = Utils.getRevisionIdKey(token, dsName);
-  client.get(revisionKeyName, cb);
+function getRevisionId(clientId, dsName, cb) {
+  var revisionKeyName = Utils.getRevisionIdKey(clientId, dsName);
+  client.hget(REVISIONS_HASH, revisionKeyName, cb);
 }
 
-function incrementRevisionId(token, dsName, cb) {
-  var params = {
-    token: token,
-    datastoreName: dsName
-  };
-  var revisionKeyName = Utils.getRevisionIdKey(token, dsName);
-  client.incr(revisionKeyName, cb);
-}
+function incrementRevisionId(token, clientId, dsName, aChange, cb) {
+  var revisionKeyName = Utils.getRevisionIdKey(clientId, dsName);
+  client.hincrby(REVISIONS_HASH, revisionKeyName, 1, function(err, newRevId) {
+    if (err) {
+      cb(err);
+      return;
+    }
+    var hrevName = Utils.getRevisionsHashName(clientId, dsName);
+    client.hset(hrevName, newRevId, JSON.stringify(aChange), function(err, res) {
+      if (err) {
+        cb(err);
+        return;
+      }
+      cb(null, newRevId);
 
-var CHANGES_KEY = 'revisionChanges';
-function getChangesKey(revisionId) {
-  return CHANGES_KEY + '_' + revisionId;
-}
-
-// Obtains the changes since the (local) revisionId passed as parameter
-function getChanges(params, lastRevisionId, cb) {
-  var revisionHashName = Utils.getRevisionHashName(params);
-  var key = getChangesKey(revisionId);
-  client.hget(revisionHashName, key, cb);
-}
-
-function setChanges(params, changesObject, cb) {
-  var revisionHashName = Utils.getRevisionHashName(params);
-  var key = Utils.getChangesKey(revisionId);
-  client.hset(revisionHashName, key, changesObject, cb);
-}
-
-// Sets the correspondence between local and remote revisionIds
-function setLocalRemoteRevisionId(params, localRevisionId, cb) {
-
+      Utils.notifyChanges(clientId, token, newRevId, function() {});
+    });
+  });
 }
 
 function getFromDatastore(params, cb) {
@@ -106,10 +92,14 @@ function deleteMedia(clientId, dsName, mediaId, cb) {
 }
 
 // The object is set (overwritten if already exists)
-function putToDatastore(params, object, id, cb) {
+function putToDatastore(params, object, id, cb, options) {
+  console.log('Put to datastore ...');
+
+  var operation = options && options.isAdd === true ? 'add' : 'put';
+
   Utils.getHashName(params, function(err, hashName, clientId) {
     if (err) {
-      cb(err, null);
+      cb(err);
       return;
     }
 
@@ -130,15 +120,11 @@ function putToDatastore(params, object, id, cb) {
           return;
         }
 
-        cb();
-
-        /*
-        setChanges(params, {
-          operation: 'update',
+        var changeList = [{
+          operation: operation,
           id: id
-        }, function(error, cb) {
+        }];
 
-        }); */
         var dsName = params.datastoreName;
         Storage.createBucketForDatastore(clientId, dsName, function(err, res) {
           var operations = [], mediaIds = [], toBeRemoved = [];
@@ -168,19 +154,42 @@ function putToDatastore(params, object, id, cb) {
                 var mediaId = Utils.getBlobId(originalValue);
                 toBeRemoved.push(deleteMedia.bind(null, clientId, dsName,
                                                   mediaId));
+                changeList.push({
+                  operation: 'removeMedia',
+                  id: id,
+                  mediaId: mediaId,
+                  propertyName: prop
+                });
               }
             }
           }
 
-          if (operations.length > 0) {
-            Async.series(operations, function(err, result) {
-              if (err) {
-                console.error('Error while uploading media: ', err);
-                return;
-              }
-              console.log('Result of uploading media: ', result)
-            });
+          if (operations.length === 0) {
+            incrementRevisionId(params.token, clientId, params.datastoreName,
+                                  changeList, cb);
+            return;
           }
+
+          Async.series(operations, function(err, results) {
+            if (err) {
+              console.error('Error while uploading media: ', err);
+              return;
+            }
+            console.log('Result of uploading media: ', results);
+            results.forEach(function(aResult, index) {
+              if (aResult === 1) {
+                changeList.push({
+                  operation: 'putMedia',
+                  id: id,
+                  mediaId: mediaIds[index],
+                  propertyName: prop
+                });
+              }
+            });
+            incrementRevisionId(params.token, clientId, params.datastoreName,
+                                changeList, cb);
+          });
+
 
           if (toBeRemoved.length > 0) {
             Async.series(toBeRemoved, function(err, result) {
@@ -199,16 +208,20 @@ function putToDatastore(params, object, id, cb) {
 
 // If the is an existing object with the same id error
 function addToDatastore(params, object, id, cb) {
+  console.log('Add to datastore');
+
   Utils.getHashName(params, function(err, hashName) {
+    console.log('Token: ', params.token);
     if (err) {
-      cb(err, null);
+      cb(err);
+      console.error('Error obtaining hash name: ', err);
       return;
     }
     id = params.id || id;
 
     client.hexists(hashName, id, function(err, result) {
       if (err) {
-        cb(err, null);
+        cb(err);
         return;
       }
 
@@ -219,7 +232,9 @@ function addToDatastore(params, object, id, cb) {
         return;
       }
 
-      putToDatastore(params, object, id, cb);
+      putToDatastore(params, object, id, cb, {
+        isAdd: true
+      });
     });
   });
 }
@@ -256,15 +271,13 @@ function deleteFromDatastore(params, id, cb) {
           });
           return;
         }
-        /*
-        setChanges(params, {
-          operation: 'delete',
-          id: id
-        }, function(error, cb) {
 
-        });
-        */
-        cb(null, 'ok');
+        var changeList = [{
+          operation: 'remove',
+          id: id
+        }];
+        incrementRevisionId(params.token, clientId, params.datastoreName,
+                            changeList, cb);
 
         var deleteOperations = [];
         // It is needed to delete the blobs from the storage
@@ -297,8 +310,182 @@ function clearDatastore(params, cb) {
       cb(err);
       return;
     }
-    Storage.deleteBucket(clientId, params.datastoreName, function(err, res) {
-      client.del(hashName, cb);
+    var dsName = params.datastoreName;
+    Storage.deleteBucket(clientId, dsName , function(err, res) {
+      client.del(hashName, function(err, result) {
+        if (err) {
+          cb(err);
+          return;
+        }
+        var revHashName = Utils.getRevisionsHashName(clientId, dsName);
+        // What happened before we do not care anymore
+        client.del(revHashName, function(err, result) {
+          if (err) {
+            console.error('Error deleting revisions: ', err);
+          }
+          var changeList = [{
+            operation: 'clear'
+          }];
+          incrementRevisionId(params.token, clientId, params.datastoreName,
+                              changeList, cb);
+        });
+      });
+
+    });
+  });
+}
+
+function getAll(params, cb) {
+  Utils.getHashName(params, function(err, hashName, clientId) {
+    if (err) {
+      cb(err);
+      return;
+    }
+
+    var dsName = params.datastoreName;
+
+    client.hgetall(hashName, function(error, result) {
+      if (error) {
+        cb(error);
+        return;
+      }
+      var out = Object.create(null);
+
+      if (result) {
+        //code
+        Object.keys(result).forEach(function(aKey) {
+          out[aKey] = JSON.parse(result[aKey]);
+        });
+      }
+
+      getRevisionId(clientId, dsName, function(err, currentRevId) {
+        if (err) {
+          cb(err);
+          return;
+        }
+        cb(null, {
+          newRevisionId: currentRevId,
+          data: out
+        });
+      });
+    });
+  });
+}
+
+function sync(params, cb) {
+  // We need to determine the changes
+  var revisionId = Number(params.revisionId);
+
+  Utils.getHashName(params, function(err, hashName, clientId) {
+    if (err) {
+      cb(err);
+      return;
+    }
+
+    var dsName = params.datastoreName;
+
+    getRevisionId(clientId, dsName, function(err, currentRevId) {
+      if (err) {
+        cb(err);
+        return;
+      }
+
+      if (currentRevId == revisionId) {
+        cb(null, {
+          newRevisionId: currentRevId,
+          updatedData: Object.create(null),
+          removedData: []
+        });
+        return;
+      }
+
+      var revHashName = Utils.getRevisionsHashName(clientId, dsName);
+      // Now we need to get all the changes
+      var operations = [];
+      for(var j = revisionId + 1; j <= currentRevId; j++) {
+        console.log('Rev: ', j);
+        operations.push(client.hget.bind(client, revHashName, j));
+      }
+
+      var objAddedHash = Object.create(null);
+      var objUpdatedHash = Object.create(null);
+      var objHash = Object.create(null);
+      var mediaHash = Object.create(null);
+      var removedObjHash = Object.create(null);
+
+      var cleared = false;
+
+      Async.parallel(operations, function(err, changeList) {
+        changeList.forEach(function(aChangeList) {
+          if (!aChangeList) {
+            return;
+          }
+          var changeListArray = JSON.parse(aChangeList);
+          changeListArray.forEach(function(aChange) {
+            switch(aChange.operation) {
+              case 'put':
+                objUpdatedHash[aChange.id] = true;
+                objHash[aChange.id] = true;
+              break;
+
+              case 'add':
+                objAddedHash[aChange.id] = true;
+                objHash[aChange.id] = true;
+                break;
+
+              case'putMedia':
+                mediaHash[aChange.mediaId] = aChange.propertyName;
+              break;
+
+              case 'removeMedia':
+                delete mediaHash[aChange.mediaId];
+              break;
+
+              case 'remove':
+                // If it was not previously known there is no point in sending
+                // this 'remove' change
+                if (!objAddedHash[aChange.id]) {
+                  removedObjHash[aChange.id] = true;
+                }
+                delete objAddedHash[aChange.id];
+                delete objUpdatedHash[aChange.id];
+                delete objHash[aChange.id];
+              break;
+
+              case 'clear':
+                objAddedHash = Object.create(null);
+                objUpdatedHash = Object.create(null);
+                objHash = Object.create(null);
+                mediaHash = Object.create(null);
+
+                cleared = true;
+              break;
+            }
+          });
+        });
+
+        var objList = Object.keys(objHash);
+        if (objList.length === 0) {
+          cb(null, {
+            newRevisionId: currentRevId,
+            updatedData: Object.create(null),
+            removedData: Object.keys(removedObjHash),
+            media: mediaHash,
+            cleared: cleared
+          });
+          return;
+        }
+
+        multipleGet(params, objList, function(err, res) {
+          cb(null, {
+            newRevisionId: currentRevId,
+            updatedData: res,
+            removedData: Object.keys(removedObjHash),
+            media: mediaHash,
+            cleared: cleared
+          });
+        });
+      });
     });
   });
 }
@@ -315,11 +502,11 @@ function multipleGet(params, idList, cb) {
         return;
       }
 
-      var parsedResult = [];
+      var parsedResult = Object.create(null);
 
-      result.forEach(function(aItem) {
+      result.forEach(function(aItem, index) {
         var obj = JSON.parse(aItem);
-        parsedResult.push(obj);
+        parsedResult[idList[index]] = obj;
       });
 
       cb(null, parsedResult);
@@ -387,3 +574,6 @@ exports.addToDatastore   = addToDatastore;
 exports.putToDatastore   = putToDatastore;
 exports.getFromDatastore = getFromDatastore;
 exports.deleteFromDatastore = deleteFromDatastore;
+exports.getAll = getAll;
+exports.getRevisionId = getRevisionId;
+exports.sync = sync;

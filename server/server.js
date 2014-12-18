@@ -38,6 +38,38 @@ httpServer.listen(80);
 
 console.log('CloudDatastore server up and running');
 
+app.get('/ds/unregister', function(req, resp) {
+  var params = Utils.getParams(req);
+
+  var token = params.token;
+
+  console.log('Token: ', token);
+
+  Utils.token2Msisdn(token, function(err, msisdn) {
+    if (err) {
+      resp.send(500);
+      return;
+    }
+
+    Utils.removePushEndPoint(msisdn, token, function(err, res) {
+      if (err) {
+        resp.send(500);
+        return;
+      }
+
+      Utils.removeToken(token, function(err, res) {
+        if (err) {
+          resp.send(500);
+          return;
+        }
+
+        console.log('Successfully unregistered');
+        resp.send(200);
+      });
+    });
+  });
+});
+
 // Registers a client with the server
 app.post('/ds/register', function(req, resp) {
   console.log('Register invoked!!');
@@ -45,6 +77,7 @@ app.post('/ds/register', function(req, resp) {
 
   var assertion = data.assertion;
   var audience = data.audience;
+  var pushEndPoint = data.pushEndPoint || '';
 
   console.log('Audience: ', audience);
 
@@ -74,15 +107,23 @@ app.post('/ds/register', function(req, resp) {
         return;
       }
 
-      resp.type('json');
-      resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
-      resp.send({
-        token: token,
-        msisdn: msisdn
+      console.log('Push end point: ', pushEndPoint);
+
+      Utils.addPushEndPoint(msisdn, token, pushEndPoint, function(err, res) {
+        if (err) {
+          console.error('Error while adding push end point: ', err);
+        }
+
+        resp.type('json');
+        resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+        resp.send({
+          token: token,
+          msisdn: msisdn
+        });
       });
+
     });
   }, verificationData);
-
 });
 
 // Get an object from the datastore by id
@@ -127,7 +168,11 @@ app.put('/dsapi/:dsname/:id', function(req, resp) {
       return;
     }
 
-    resp.send('ok');
+    resp.type('json');
+    resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+    resp.send({
+      revisionId: result
+    });
   });
 });
 
@@ -148,7 +193,11 @@ app.post('/dsapi/:dsname/:id', function(req, resp) {
       return;
     }
 
-    resp.send('ok');
+    resp.type('json');
+    resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+    resp.send({
+      revisionId: result
+    });
   });
 });
 
@@ -169,12 +218,11 @@ app.delete('/dsapi/:dsname/:id', function(req, resp) {
         resp.send(500);
         return;
       }
-      if (result == 1) {
-        resp.send('ok');
-      }
-      else {
-        resp.send(404);
-      }
+      resp.type('json');
+      resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+      resp.send({
+        revisionId: result
+      });
     });
 
     return;
@@ -186,42 +234,54 @@ app.delete('/dsapi/:dsname/:id', function(req, resp) {
       return;
     }
 
-    if (result !== 'ok') {
-      resp.send(404);
-      return;
-    }
-
-    resp.send(200);
+    resp.type('json');
+    resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+    resp.send({
+      revisionId: result
+    });
   });
 });
 
 
-
 app.get('/dsapi/:dsname/blob/:id', function(req, resp) {
-  var url = URL.parse(req.originalUrl);
-  var params = QueryString.parse(url.query);
+  var params = Utils.getParams(req);
 
   var token = params.token;
-
-  var dsName = req.params.dsname;
+  var dsName = params.datastoreName;
   var blobId = req.params.id;
+
+  console.log('Media: ', token, dsName, blobId);
 
   if (!token || !dsName || !blobId) {
     resp.send(404);
     return;
   }
 
-  Storage.getMedia(token, dsName, blobId, function() {}).pipe(resp);
+  Utils.token2Msisdn(token, function(err, msisdn) {
+     Storage.getMedia(msisdn, dsName, blobId, function() {}).pipe(resp);
+  });
 });
 
 // Get the revisionId of the datastore
-app.get('/dsapi/:dsname/revisionId', function(req, resp) {
+app.get('/dsapi/:dsname/sync/revisionId', function(req, resp) {
+  var params = Utils.getParams(req);
 
-});
+  Utils.token2Msisdn(params.token, function(err, msisdn) {
+    Datastore.getRevisionId(msisdn, params.datastoreName, function(err, result) {
+      if (err) {
+        console.error('Error while getting revision id: ', err);
+        resp.send(500);
+        return;
+      }
+      var out = {
+        revisionId: result
+      };
 
-// Set the revisionId of the datastore
-app.post('/dsapi/:dsname/revisionId', function(req, resp) {
-
+      resp.type('json');
+      resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+      resp.send(out);
+    })
+  });
 });
 
 // Lists the known datastores
@@ -229,9 +289,31 @@ app.get('/dsapi/listds', function(req, resp) {
 
 });
 
-// Sync with this datastore (sync the last known revisionId)
-app.get('/dsapi/sync', function(req, resp) {
-  console.log('hi');
+// Sync with this datastore (last known revision id)
+app.get('/dsapi/:dsname/sync/from', function(req, resp) {
+  console.log('Synchronization ...');
+
+  var params = Utils.getParams(req);
+
+  Datastore.sync(params, function(err, result) {
+    if (err) {
+      console.error('Error while syncing: ', err);
+      return;
+    }
+
+    var updateInfo = createResponseObj(result.updatedData, result.media);
+
+    var syncInfoObj = {
+      newRevisionId: result.newRevisionId,
+      updatedData: updateInfo,
+      removedData: result.removedData || [],
+      cleared: result.cleared
+    };
+
+    resp.type('json');
+    resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+    resp.send(syncInfoObj);
+  });
 });
 
 // These are debug operations
@@ -311,40 +393,70 @@ app.get('/dsdebug/:dsname/delete_store_bucket', function(req, resp) {
 
 
 // Gets all the data the datastore has (typically used to bootstrap)
-app.get('/dsapi/:dsname/getAll', function(req, resp) {
+app.get('/dsapi/:dsname/sync/get_all', function(req, resp) {
+  console.log('Get All ...');
+
   var params = Utils.getParams(req);
-  Utils.getHashName(params, function(err, hashName) {
+  Datastore.getAll(params, function(err, data) {
     if (err) {
+      console.error('Error getting all: ', err);
       resp.send(500);
       return;
     }
-    client.hgetall(hashName, function(error, result) {
-      if (error) {
-        cb(null, error);
-        return;
-      }
-      var out = {};
-      for(var j = 0; j < result.length / 2; j+=2) {
-        var key = result[j];
-        var object = result[j + 1];
-        out[key] = JSON.parse(object);
-      }
 
-      resp.type('json');
-      resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
-      resp.send(out);
-    });
+    console.log('Data: ', data);
+
+    var out = {
+      newRevisionId: data.newRevisionId,
+      updatedData: createResponseObj(data.data),
+      removedData: []
+    };
+
+    resp.type('json');
+    resp.set('Expires', 'Thu, 15 Apr 2010 20:00:00 GMT');
+    resp.send(out);
   });
 });
 
-// Bulk operation that allows to obtain a change list
-// sync last revisionId
-app.get('/dsapi/:dsname/bulk_sync', function(req, resp) {
+// Creates a response object with all the data and media references
+function createResponseObj(data, mediaHash) {
+  if (!data) {
+    out = Object.create(null);
+    return out;
+  }
+  // We need to inspect the retrieved objects and indicate which of them
+  // include blobs (media) data. That will make client life easier
+  var out = {
+    objectData: data,
+    mediaInfo: Object.create(null)
+  };
 
-});
+  var mediaInfo = out.mediaInfo;
+  Object.keys(data).forEach(function(aKey) {
+    var object = data[aKey];
+    for(var prop in object) {
+      var value = object[prop];
+      if (value.indexOf('blob:') === 0) {
+        var blobId = Utils.getBlobId(object[prop]);
+        if (!mediaHash || mediaHash && mediaHash[blobId]) {
+          mediaInfo[blobId] = {
+            objId: aKey,
+            objProp: prop
+          }
+        }
+        // The blob property is not sent in the object
+        delete object[prop];
+      }
+    }
+  });
+
+  return out;
+}
+
 
 // Bulk operation that allows to sync changes to the remote datastore
-app.post('/dsapi/:dsname/:revisionId/bulk_sync', function(req, resp) {
+// Currently not used
+app.post('/dsapi/:dsname/bulk_sync', function(req, resp) {
   var reqParams = req.params;
   var url = URL.parse(req.originalUrl);
   var queryParams = QueryString.parse(url.query);

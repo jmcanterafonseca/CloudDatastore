@@ -62,7 +62,8 @@ form#note-data-form {
 }
 
 textarea[name="text-data"] {
-  height: 35rem;
+  height: 19rem !important;
+  max-height: 19rem !important;
 }
 
 #notes-form-view[data-mode="edit"] button#delete-button {
@@ -188,4 +189,10 @@ div[role="toolbar"] button[disabled="disabled"] {
   background-color: rgba(0,0,0,0.05);
   color: #c7c7c7;
   pointer-events: none;
+}
+
+@media (max-height: 480px) {
+  textarea[name="text-data"] {
+    height: 10rem !important;
+  }
 }

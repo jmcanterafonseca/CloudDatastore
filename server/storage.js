@@ -4,8 +4,8 @@ var Storage = require('request');
 var fs = require('fs');
 
 // Configuration
-var subdomain = 'cantera';
-var user      = 'cantera';
+var subdomain = '';
+var user      = '';
 var pwd       = '';
 var endpoint  = 'nos-eu-mad-1.instantservers.telefonica.com';
 var baseUrl   = 'https://' + subdomain + '.' + endpoint;

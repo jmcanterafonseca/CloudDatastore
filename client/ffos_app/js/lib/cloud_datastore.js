@@ -252,7 +252,9 @@ CloudDatastore.prototype = {
                 return;
               }
               var syncSuccess = () => {
+                console.log('NEW REV ID: ', syncData.newRevisionId);
                 var newLocalRevId = this._localDatastore.revisionId;
+                console.log('NEW LOCAL REV ID: ', newLocalRevId);
                 this._addToLocalRemoteRevisions(newLocalRevId,
                                                     syncData.newRevisionId).
                     then(resolve, reject);
@@ -274,7 +276,10 @@ CloudDatastore.prototype = {
               console.log('Succesfully obtained the data remotely: ',
                           syncData.newRevisionId);
               var syncSuccess = () => {
+                // alert('NEW REV ID: ' + syncData.newRevisionId);
+                console.log('NEW REV ID: ', syncData.newRevisionId);
                 var newLocalRevId = this._localDatastore.revisionId;
+                console.log('NEW LOCAL REV ID: ', newLocalRevId);
                 this._addToLocalRemoteRevisions(newLocalRevId,
                                                     syncData.newRevisionId).
                     then(resolve, reject);
@@ -545,16 +550,17 @@ CloudDatastore.prototype = {
       // If there are pending operations to be executed against the server
       // We execute them
       var currentLocalRevId = this._localDatastore.revisionId;
+      console.log('Current Local Rev Id: ', currentLocalRevId);
       this._retrieveRevisionMetadata().then(() => {
         console.log(JSON.stringify(this._localRemoteRevisions));
         console.log(JSON.stringify(this._revisionGraph));
 
         var remoteRevId = this._localRemoteRevisions[currentLocalRevId];
+        // alert(JSON.stringify(this._localRemoteRevisions));
         if (!remoteRevId) {
           var lastSyncedRevision = this._getLastSyncedLocalRev(
                                                             currentLocalRevId);
 
-          alert('Last synced revision: ' + lastSyncedRevision);
           var cursor = this._localDatastore.sync(lastSyncedRevision);
 
           var changeHandler = (task) => {
